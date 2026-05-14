@@ -1,0 +1,37 @@
+VX Genome Viewer — pre-compiled binaries
+========================================
+
+Copyright (c) 2024-2026 Biocodecs Group / Arnaroo Ribologicals
+
+The pre-compiled binaries distributed under this repository
+(.tar.gz, .dmg, .zip, and .exe installer files attached to GitHub
+releases, plus the corresponding genome-viewer / genome-viewer.exe
+executables and bundled non-VX libraries) are licensed under the
+Creative Commons Attribution-NonCommercial-NoDerivatives 4.0
+International License (CC-BY-NC-ND-4.0):
+
+    https://creativecommons.org/licenses/by-nc-nd/4.0/
+
+Summary of terms (NOT a substitute for the full license text above):
+
+* Attribution — you must give appropriate credit, provide a link
+  to the license, and indicate if changes were made.
+
+* NonCommercial — you may not use the binaries for commercial
+  purposes without a separate commercial license from
+  Biocodecs Group / Arnaroo Ribologicals
+  (contact hello@biocodecs.org).
+
+* NoDerivatives — if you remix, transform, or build upon the
+  binaries, you may not distribute the modified material.
+
+The VX D source code is NOT distributed with these binaries and
+is held under a separate proprietary license. The bundled
+third-party libraries (GTK3, freetype, glib, cairo, pango, etc.)
+retain their original open-source licenses; see the documentation
+bundled inside each release archive for the per-library breakdown.
+
+The MCP server source (mcp/) and the HTTP API specification
+(api/) included in the source-tree of this repository are
+licensed separately under the MIT license; see those folders'
+LICENSE files.

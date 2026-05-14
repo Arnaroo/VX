@@ -20,7 +20,7 @@ Summary of terms (NOT a substitute for the full license text above):
 * NonCommercial — you may not use the binaries for commercial
   purposes without a separate commercial license from
   Biocodecs Group / Arnaroo Ribologicals
-  (contact hello@biocodecs.org).
+  (contact contact@biocodecs.org).
 
 * NoDerivatives — if you remix, transform, or build upon the
   binaries, you may not distribute the modified material.

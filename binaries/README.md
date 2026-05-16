@@ -141,3 +141,4 @@ VX_DEBUG_GL=1 VX_DEBUG_ALIGNMENT=1 ./bin/genome-viewer 2>/tmp/vx_dbg.log
 
 See [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)
 for the full diagnostic playbook.
+

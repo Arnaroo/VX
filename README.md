@@ -369,14 +369,33 @@ can be reused freely.
 If you use VX in research, please cite the accompanying
 manuscript and the Zenodo DOI of the specific release you used.
 
-```
-[Citation placeholder; DOI will be added on manuscript publication.
-A Zenodo DOI is minted automatically for each tagged release; see
-the GitHub release page for the live DOI badge.]
+**Cite the project (all versions, always resolves to the latest release):**
+
+> Shirokikh, N. E., & Cleynen, A. *VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework.* Zenodo. https://doi.org/10.5281/zenodo.20234450
+
+**Cite a specific release (v0.9.0.1, snapshot of the v0.9.0 "Aardvark" public pre-release):**
+
+> Shirokikh, N. E., & Cleynen, A. (2026). *Arnaroo/VX: VX 0.9.0.1 — archival re-publish.* Zenodo. https://doi.org/10.5281/zenodo.20234451
+
+BibTeX:
+
+```bibtex
+@software{vx_genome_viewer,
+  author       = {Shirokikh, Nikolay E. and Cleynen, Alice},
+  title        = {{VX: an AI-agent-controllable desktop genome
+                   and transcriptome browser with a programmable
+                   analysis framework}},
+  year         = {2026},
+  publisher    = {Zenodo},
+  doi          = {10.5281/zenodo.20234450},
+  url          = {https://doi.org/10.5281/zenodo.20234450}
+}
 ```
 
-Once the manuscript is published, this block will be replaced
-with full BibTeX, plain-text, and EndNote-importable references.
+Once the accompanying manuscript is published, this block will
+gain an additional reference to the journal article; the Zenodo
+DOIs above will continue to resolve to the archived software
+snapshots.
 
 ---
 

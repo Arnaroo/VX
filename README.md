@@ -1,4 +1,4 @@
-# VX Genome Viewer
+# VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework.
 
 > **A fast, cross-platform, GPU-accelerated desktop genome and
 > transcriptome browser, built from the ground up for *AI-agent

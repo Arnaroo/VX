@@ -3,9 +3,9 @@
 User-visible changes to VX Genome Viewer. Newer entries are at the
 top.
 
-The project tracks internal development sessions (Sxxx, Axx, Dxx,
-Cxx codes) in private trackers; this public changelog focuses on
-what changed in the binaries and APIs.
+Detailed development history is maintained in private trackers;
+this public changelog focuses on what changed in the binaries and
+APIs between public releases.
 
 ---
 
@@ -37,7 +37,7 @@ macOS arm64, Windows x86_64) packaged from a single source tree.
   (H.264), WebM (VP9), or GIF. Configurable fps and capture
   mode (timer or per-frame). Uses ffmpeg via a piped raw-frame
   channel and PBO-backed GL readback.
-- **MCP catalogue (39+ tools)** — exposed via `mcp/vx_mcp_server.py`
+- **MCP catalogue (43 tools)** — exposed via `mcp/vx_mcp_server.py`
   and reachable directly over HTTP on `127.0.0.1:9876`. Covers
   observation, navigation, file loading, track management,
   group management, data queries, export, bookmarks, loading

@@ -105,3 +105,4 @@ The MCP server's tool list maps 1:1 to the VX HTTP API command
 catalogue. The version of the server is pinned to the VX
 release it ships with. If you upgrade VX, redeploy this folder's
 contents to keep them in sync.
+

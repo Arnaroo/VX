@@ -1,4 +1,4 @@
-# VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework.
+# VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework
 
 > **A fast, cross-platform, GPU-accelerated desktop genome and
 > transcriptome browser, built from the ground up for *AI-agent
@@ -35,16 +35,16 @@ well:
    on a laptop, who need an *instantly responsive* viewer that
    doesn't lock up while a 23 GB BAM region cache warms.
 2. **Bioinformaticians and computational biologists** who want
-   to *run* analyses against the data while looking at it —
+   to *run* analyses against the data while looking at it. Run
    peak calling, GC content, coverage anomalies, alignment QC,
-   variant density, Hi-C TAD boundaries, cross-track correlation
-   — directly from the viewer, in the background, with file
+   variant density, Hi-C TAD boundaries, cross-track correlation,
+   directly from the viewer, in the background, with file
    exports.
-3. **AI / agentic-LLM users** who want a genome browser their
+4. **AI / agentic-LLM users** who want a genome browser their
    agent can *see and control*: navigate the viewport, load
    files, screenshot tracks, run analyses, export regions, all
    through a structured tool catalogue.
-4. **Educators and figure-makers** who want a reproducible,
+5. **Educators and figure-makers** who want a reproducible,
    scriptable, screenshot-and-record-ready viewer that produces
    publication-grade output (PNG, SVG, MP4 / WebM / GIF screen
    recordings) from a single binary.
@@ -52,9 +52,9 @@ well:
 If you do **NGS, RNA-seq, ChIP-seq, ATAC-seq, Hi-C, long-read
 sequencing, variant calling, comparative genomics, transcript
 isoform analysis, ribosome profiling, CLIP-seq, methylation
-sequencing, MeRIP-seq, or any other sequencing-based assay** —
+sequencing, MeRIP-seq, or any other sequencing-based assay**
 and you've ever wished your genome browser was faster, smarter,
-or scriptable — VX is built for you.
+or scriptable, VX is built for you.
 
 ---
 
@@ -62,12 +62,12 @@ or scriptable — VX is built for you.
 
 | Capability | What it means in practice |
 |---|---|
-| **GPU-accelerated rendering** | OpenGL-based level-of-detail engine — render tens of thousands of features per second, smooth pan/zoom from chromosome scale (10⁸ bp) to base level (10⁰ bp) in one continuous gesture. No tile-popping. No re-fetch on every nudge. |
+| **GPU-accelerated rendering** | OpenGL-based level-of-detail engine: render tens of thousands of features per second, smooth pan/zoom from chromosome scale (10⁸ bp) to base level (10⁰ bp) in one continuous gesture. No tile-popping. No re-fetch on every nudge. |
 | **Async, background-thread BAM loading** | The viewport never blocks. Load a 23 GB BAM, click to a new region, render proceeds at full FPS while the read fetch completes in the background. A load-status strip tells you *why* the alignments aren't there yet. |
-| **38+ tool MCP catalogue + HTTP API** | Built-in HTTP server on `127.0.0.1:9876`. Any tool that speaks HTTP — Claude Code, Claude Desktop, a Python script, `curl` — can drive every aspect of the viewer: navigate, load files, query genes, screenshot the viewport, run analyses, manage bookmarks, record video. AI-native by design. |
-| **50+ built-in analyses** | Peak calling, RPKM/TPM/CPM quantification, GC content, CpG density, motif search, repeat density, signal correlation, variant annotation, Ts/Tv, alleles, MAPQ distribution, insert sizes, strand bias, soft-clip frequency, Hi-C contact-vs-distance, TAD boundaries, heatmap matrix, profile plots, peak prominence, gap detection — all in a background thread with file output (BED / BedGraph / TSV). |
+| **38+ tool MCP catalogue + HTTP API** | Built-in HTTP server on `127.0.0.1:9876`. Any tool that speaks HTTP (Claude Code, Claude Desktop, a Python script, `curl`) can drive every aspect of the viewer: navigate, load files, query genes, screenshot the viewport, run analyses, manage bookmarks, record video. AI-native by design. |
+| **50+ built-in analyses** | Peak calling, RPKM/TPM/CPM quantification, GC content, CpG density, motif search, repeat density, signal correlation, variant annotation, Ts/Tv, alleles, MAPQ distribution, insert sizes, strand bias, soft-clip frequency, Hi-C contact-vs-distance, TAD boundaries, heatmap matrix, profile plots, peak prominence, gap detection, all in a background thread with file output (BED / BedGraph / TSV). |
 | **Built-in video / GIF recording** | Capture the OpenGL viewport to MP4 (H.264), WebM (VP9) or GIF. Two modes: timer-paced (constant fps) or render-paced (every frame). Quality and frame rate user-controlled. Ideal for figure animations, talks, supplementary movies. |
-| **Subsampling + transparency** | Alignment tracks honour a configurable read-cap (default 500 reads/region) with a `min_mapq` filter. When a region is subsampled, a *badge* on the track tells you so. The screenshot endpoint respects the same cap — figures match what you see. |
+| **Subsampling + transparency** | Alignment tracks honour a configurable read-cap (default 500 reads/region) with a `min_mapq` filter. When a region is subsampled, a *badge* on the track tells you so. The screenshot endpoint respects the same cap, so all figures match what you see. |
 | **Self-contained binaries** | No Python runtime, no Conda environment, no JBrowse-style web stack. A single binary (~19 MB on Linux, ~45 MB macOS, ~46 MB Windows zip) with all GUI deps either bundled (Win/Mac) or relying on a baseline desktop install (Linux). Drop, double-click, run. |
 | **Triple-platform pre-compiled** | Linux x86_64 (4 CPU-profile binaries), macOS arm64 `.app` + `.dmg`, Windows x86_64 ZIP. Built with the LDC LLVM-based D compiler, full LTO, static druntime + Phobos. |
 | **No telemetry, no cloud, no account** | VX is a desktop application. It does not phone home. The HTTP API binds only to `127.0.0.1` by default. Your data stays on your machine. |
@@ -75,7 +75,7 @@ or scriptable — VX is built for you.
 If you've used IGV and wished it were faster, or JBrowse and
 wished it weren't a browser tab, or Pileup.js and wished it ran
 big files, or any genome browser and wished an AI agent could
-drive it — VX is the answer.
+drive it, VX is the answer.
 
 ---
 
@@ -142,7 +142,7 @@ certutil -hashfile vx-X.Y.Z-windows-x86_64.zip SHA256      # Windows
 
 ### 2. Unpack / install
 
-**Linux** — relocatable tarball:
+**Linux** relocatable tarball:
 ```bash
 tar xzf VX-X.Y.Z-linux-x86_64.tar.gz
 cd vx-linux/
@@ -156,7 +156,7 @@ OpenGL driver (`libGL.so.1`).
 - Fedora 35+ / RHEL 9: `sudo dnf install gtk3 mesa-libGL libepoxy`
 - Arch / Manjaro: `sudo pacman -S gtk3 libepoxy mesa`
 
-**macOS arm64** — `.dmg` installer:
+**macOS arm64** `.dmg` installer:
 1. Double-click `VX-X.Y.Z-macos-arm64.dmg`.
 2. Drag `VX.app` into the `Applications` folder.
 3. First launch: right-click `VX.app` → **Open** (Gatekeeper
@@ -165,7 +165,7 @@ OpenGL driver (`libGL.so.1`).
 4. Or, from Terminal:
    `xattr -dr com.apple.quarantine /Applications/VX.app`
 
-**Windows x86_64** — relocatable ZIP:
+**Windows x86_64** relocatable ZIP:
 1. Extract `vx-X.Y.Z-windows-x86_64.zip` anywhere.
 2. Double-click `genome-viewer.exe` inside the extracted folder.
 3. Windows SmartScreen may warn on first launch (unsigned). Click
@@ -180,7 +180,7 @@ curl -s http://127.0.0.1:9876/ping
 # → {"status":"ok","app":"VX Genome Viewer","api_version":2}
 ```
 
-That's your installation smoke-test.
+That's your installation test.
 
 ---
 
@@ -289,9 +289,9 @@ matrix.
 ### Export formats
 
 **Static:** PNG (full window, viewport, single-track), SVG
-(vector — viewport, single-track), BED / BedGraph / TSV / CSV
+(vector, viewport, single-track), BED / BedGraph / TSV / CSV
 (analysis output), session save / restore.
-**Animated:** MP4 (H.264), WebM (VP9), GIF — direct viewport
+**Animated:** MP4 (H.264), WebM (VP9), GIF direct viewport
 capture via ffmpeg pipe.
 
 ---
@@ -301,7 +301,7 @@ capture via ffmpeg pipe.
 These are documented up front so you can decide whether v0.9.0
 fits your workflow.
 
-- **Windows ZIP** ships a console-subsystem build — launching from
+- **Windows ZIP** ships a console-subsystem build, launching from
   Explorer opens a cmd window alongside the GUI. Cosmetic only;
   the GUI itself works identically. A no-console (GUI subsystem)
   build is planned for v0.9.x.
@@ -348,7 +348,7 @@ The per-folder LICENSE matrix is reflected by `LICENSE-binaries.txt`,
 
 ## Source code
 
-The VX D source code is **proprietary and confidential** —
+The VX D source code is **proprietary and confidential** and is
 held under a separate licence by Biocodecs Group / Arnaroo
 Ribologicals. It is not distributed via this repository.
 
@@ -370,7 +370,7 @@ If you use VX in research, please cite the accompanying
 manuscript and the Zenodo DOI of the specific release you used.
 
 ```
-[Citation placeholder — DOI will be added on manuscript publication.
+[Citation placeholder; DOI will be added on manuscript publication.
 A Zenodo DOI is minted automatically for each tagged release; see
 the GitHub release page for the live DOI badge.]
 ```
@@ -382,9 +382,9 @@ with full BibTeX, plain-text, and EndNote-importable references.
 
 ## Build provenance
 
-For full transparency on how each release binary was produced —
+For full transparency on how each release binary was produced, including
 compiler version, flags, LTO settings, bundled libraries,
-signing flow, recommended downstream verification — see
+signing flow, recommended downstream verification, see
 [`docs/BUILD_PROVENANCE.md`](docs/BUILD_PROVENANCE.md).
 
 ---

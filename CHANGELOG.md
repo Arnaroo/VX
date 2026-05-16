@@ -9,6 +9,17 @@ APIs between public releases.
 
 ---
 
+## v0.9.0.1 — 2026-05-16 (archival re-publish)
+
+Metadata-only release. No changes to binaries or APIs since
+v0.9.0. This tag exists so that the public-facing repository is
+captured in a Zenodo deposit and assigned a citable DOI for the
+accompanying manuscript. README polish, per-path commit-message
+tidy-up, and topic-tag listing committed since v0.9.0 are included
+in the archived snapshot.
+
+---
+
 ## v0.9.0 "Aardvark" — 2026-05-14 (first public pre-release)
 
 First public-facing release. Triple-platform binaries (Linux,

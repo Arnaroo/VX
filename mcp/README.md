@@ -14,7 +14,9 @@ MCP-compatible client).
 VX runs an embedded HTTP API on `127.0.0.1:9876`. The MCP server
 in this folder is a thin, dependency-light Python wrapper that:
 
-- exposes 39+ MCP tools (one per VX command) to the agent;
+- exposes 43 MCP tools (one per VX command, plus dedicated wrappers
+  for `/ping`, `/state`, `/screenshot`, and `/screenshot/track`) to
+  the agent;
 - translates MCP tool invocations into HTTP POSTs against the
   running VX instance;
 - streams back JSON responses, screenshots (as base64 PNG), and

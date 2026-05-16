@@ -10,9 +10,8 @@ auditor can answer three questions without access to our build hosts:
 3. **What can be verified after the fact (sizes, hashes, smoke
    tests)?**
 
-It is a distilled, public-facing summary of the internal
-`BUILD_README.md`, `BUILD_MACOS.md`, and `BUILD_WINDOWS.md` notes —
-host-specific paths and provisioning credentials have been
+It is a distilled, public-facing summary of the internal build
+notes — host-specific paths and provisioning credentials have been
 stripped.
 
 The D source code that produced these binaries is **proprietary and
@@ -90,7 +89,7 @@ README.
 | Item                | Value                                                  |
 |---|---|
 | Host triple         | `arm64-apple-macos13.0`                                |
-| Toolchain           | LDC **1.41.0** (pinned — see internal C13a)            |
+| Toolchain           | LDC **1.41.0** (pinned)                                |
 | Linker              | Apple `ld`                                             |
 | Runtime libc        | libSystem on macOS 13+                                 |
 | GTK linkage         | bundled via `dylibbundler` (~30 dylibs)                |

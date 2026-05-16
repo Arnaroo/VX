@@ -98,8 +98,8 @@ see a small badge on the track.
 
 ## 6. Drag-and-drop track reorder doesn't show a drop line
 
-The drop indicator was rewritten in S89d. If you see no
-indicator at all, you may be on an older build — confirm with
+If you see no drop indicator at all when dragging a track row,
+you may be on a pre-v0.9.0 build — confirm with
 `./bin/genome-viewer --version`.
 
 ---

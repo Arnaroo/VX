@@ -218,7 +218,7 @@ paths:
         Every documented `RequestCommand_*` schema in `#/components` can
         be POSTed here verbatim; the `command` field is the discriminator.
 
-        Available commands (38 total):
+        Available commands (40 total):
 
         - **File loading:** `load_file`
         - **Track management:** `set_track_visibility`, `set_track_height`,

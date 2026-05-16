@@ -37,7 +37,7 @@ command **without** the `vx_` prefix. For example, the MCP tool
 
 ---
 
-## Command catalogue (38 total)
+## Command catalogue (40 total)
 
 | Category           | Commands                                                                                                    |
 |--------------------|-------------------------------------------------------------------------------------------------------------|

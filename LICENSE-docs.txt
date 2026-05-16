@@ -30,3 +30,4 @@ screenshots. It does NOT apply to:
 * The HTTP API specification (see api/LICENSE — MIT).
 * The VX D source code (proprietary, not distributed via this
   repository).
+

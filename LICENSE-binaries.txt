@@ -35,3 +35,4 @@ The MCP server source (mcp/) and the HTTP API specification
 (api/) included in the source-tree of this repository are
 licensed separately under the MIT license; see those folders'
 LICENSE files.
+

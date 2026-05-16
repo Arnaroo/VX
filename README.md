@@ -26,7 +26,7 @@
 
 VX is a **desktop genome browser** in the family of IGV, UCSC
 Genome Browser, JBrowse, Jbrowse 2, SeqMonk, Tablet, Pileup.js,
-and Pretzel — but built for a different decade. It targets four
+and Pretzel, but built for a different decade. It targets four
 audiences that the current generation of browsers serves less
 well:
 

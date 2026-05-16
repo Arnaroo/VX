@@ -412,3 +412,4 @@ async loading · video recording · screenshot · screencast ·
 SVG export · reproducible figures · publication-grade ·
 desktop bioinformatics · IGV alternative · JBrowse alternative ·
 Tablet alternative · SeqMonk alternative · Pileup.js alternative.
+

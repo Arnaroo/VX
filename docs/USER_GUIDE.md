@@ -185,3 +185,4 @@ opt-in (default: off).
 
 The configuration file lives next to the executable as
 `genome-viewer.cfg` (INI format).
+

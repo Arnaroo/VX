@@ -371,7 +371,11 @@ manuscript and the Zenodo DOI of the specific release you used.
 
 **Cite the project (all versions, always resolves to the latest release):**
 
-> Shirokikh, N. E., & Cleynen, A. *VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework.* Zenodo. https://doi.org/10.5281/zenodo.20234450
+> Shirokikh, N. E., & Cleynen, A. *VX: an AI-agent-controllable desktop genome and transcriptome browser with a programmable analysis framework.* _Zenodo_ https://doi.org/10.5281/zenodo.20234450
+
+**Cite bioRxiv preprint:**
+
+>  *VX: an AI-enabled desktop genome viewer and transcriptome browser with a programmable analysis framework* Nikolay E Shirokikh, Alice Cleynen _bioRxiv_ 2026.05.17.725790; doi: https://doi.org/10.64898/2026.05.17.725790 
 
 **Cite a specific release (v0.9.0.1, snapshot of the v0.9.0 "Aardvark" public pre-release):**
 

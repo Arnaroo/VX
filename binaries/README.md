@@ -16,7 +16,7 @@ Windows packages carry keep their own licences: see *What's bundled* below.
 |---|---|---|---|
 | Linux x86_64 (x86-64-v3: Intel Haswell or AMD Excavator and later; glibc 2.34 or later) | `VX-0.10.0-linux-x86_64.tar.gz` | Tarball | 8.1 MB |
 | macOS arm64 (Apple silicon, macOS 26 or later) | `VX-0.10.0-macos-arm64.dmg` | Disk image | 22.9 MB |
-| Windows x86_64 (Windows 10 or 11; x86-64-v3, as for Linux) | `VX-0.10.0-windows-x86_64.zip` | ZIP | to follow |
+| Windows x86_64 (Windows 10 or 11; x86-64-v3, as for Linux) | `VX-0.10.0-windows-x86_64.zip` | ZIP | 58.6 MB |
 
 Each asset has a `.sha256` file beside it holding its SHA-256 digest. The demo datasets are separate assets, under the
 `demo-data-v1` release; VX downloads them itself (Open > Open Demo Dataset).

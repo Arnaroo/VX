@@ -153,7 +153,7 @@ it through, after which it opens at once.
 |---|---|
 | Build host | Windows x86-64 |
 | Toolchain | LDC 1.43.0 (its `windows-multilib` release) |
-| Linker | the MSVC linker of the Visual Studio Build Tools 18.4 |
+| Linker | LLD (`lld-link`), the linker built into LDC, which a full link-time optimisation needs; the C runtime, the Windows SDK's libraries and MSVC's `cl` (for a small FreeType shim) from the Visual Studio Build Tools 18.4 |
 | Target | `x86_64-windows-msvc` |
 | Build type | `release-windows`: `-O3 -mcpu=x86-64-v3 --fp-contract=fast -boundscheck=off -flto=full`, the LTO druntime and Phobos linked statically, `-function-sections -data-sections`, `/OPT:REF /OPT:ICF` |
 | Configuration | both of `dub.json`'s: `windows-gui` (linked with `/SUBSYSTEM:WINDOWS`, no terminal window) as `vx.exe`, and `windows` (a console program, for the command line) as `vx-console.exe` |

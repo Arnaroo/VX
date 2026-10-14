@@ -1,12 +1,11 @@
-VX Genome Viewer — pre-compiled binaries
+VX: pre-compiled binaries
 ========================================
 
 Copyright (c) 2024-2026 Biocodecs Group / Arnaroo Ribologicals
 
 The pre-compiled binaries distributed under this repository
-(.tar.gz, .dmg, .zip, and .exe installer files attached to GitHub
-releases, plus the corresponding genome-viewer / genome-viewer.exe
-executables and bundled non-VX libraries) are licensed under the
+(the .tar.gz, .dmg and .zip files attached to GitHub releases, and
+the vx and vx.exe executables they contain) are licensed under the
 Creative Commons Attribution-NonCommercial-NoDerivatives 4.0
 International License (CC-BY-NC-ND-4.0):
 
@@ -14,22 +13,26 @@ International License (CC-BY-NC-ND-4.0):
 
 Summary of terms (NOT a substitute for the full license text above):
 
-* Attribution — you must give appropriate credit, provide a link
+* Attribution: you must give appropriate credit, provide a link
   to the license, and indicate if changes were made.
 
-* NonCommercial — you may not use the binaries for commercial
+* NonCommercial: you may not use the binaries for commercial
   purposes without a separate commercial license from
   Biocodecs Group / Arnaroo Ribologicals
   (contact contact@biocodecs.org).
 
-* NoDerivatives — if you remix, transform, or build upon the
+* NoDerivatives: if you remix, transform, or build upon the
   binaries, you may not distribute the modified material.
 
 The VX D source code is NOT distributed with these binaries and
-is held under a separate proprietary license. The bundled
-third-party libraries (GTK3, freetype, glib, cairo, pango, etc.)
-retain their original open-source licenses; see the documentation
-bundled inside each release archive for the per-library breakdown.
+is held under a separate proprietary license. The third-party
+libraries and data bundled in the macOS and Windows packages (GTK 3,
+GLib, cairo, Pango, FreeType and others) and the bundled DejaVu Sans
+Mono font are not covered by this license: each keeps its own
+open-source license, named with its version and source in
+THIRD_PARTY_LICENSES.txt inside each package (the font's license is
+in its fonts folder). VX is based in part on works of the GtkD
+project (http://gtkd.org).
 
 The MCP server source (mcp/) and the HTTP API specification
 (api/) included in the source-tree of this repository are

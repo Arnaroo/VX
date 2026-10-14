@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# curl_navigate.sh — end-to-end bash walk-through of the VX HTTP API.
+# curl_navigate.sh: end-to-end bash walk-through of the VX HTTP API.
 #
 # Demonstrates: ping, state introspection, file loading, navigation,
 # region screenshot, sequence retrieval, gene lookup. Run with VX
@@ -8,6 +8,9 @@
 # Usage:
 #   ./curl_navigate.sh /absolute/path/to/reference.fa /absolute/path/to/annotations.gtf
 # or with no args to drive a VX that already has files loaded.
+#
+# An error answer carries an HTTP status (4xx or 5xx) and a JSON body with
+# `error` and `code`; curl prints the body either way.
 
 set -euo pipefail
 
@@ -30,6 +33,13 @@ cmd() {
     printf '\n'
 }
 
+# A load is in when loading_status says done, not finalizing, and nothing queued
+loaded() {
+    echo "$1" | grep -q '"done":true' &&
+        echo "$1" | grep -q '"finalizing":false' &&
+        echo "$1" | grep -q '"queued":0'
+}
+
 # ── 1. liveness check ──────────────────────────────────────────────────
 say 'GET /ping'
 curl -sS "$VX/ping" | sed 's/^/  /'
@@ -44,12 +54,12 @@ printf '\n  ...\n\n'
 if [[ -n "$FASTA" ]]; then
     cmd load_file "$(printf '{"command":"load_file","params":{"path":"%s"}}' "$FASTA")"
 
-    # Poll until the load completes
+    # Poll until the load is in: done, not finalizing, nothing queued
     for _ in $(seq 1 60); do
         status=$(curl -sS "$VX/command" -H 'Content-Type: application/json' \
             -d '{"command":"loading_status"}')
         echo "  $status"
-        if echo "$status" | grep -q '"done":true'; then break; fi
+        if loaded "$status"; then break; fi
         sleep 1
     done
 fi
@@ -61,7 +71,7 @@ if [[ -n "$GTF" ]]; then
     for _ in $(seq 1 60); do
         status=$(curl -sS "$VX/command" -H 'Content-Type: application/json' \
             -d '{"command":"loading_status"}')
-        if echo "$status" | grep -q '"done":true'; then break; fi
+        if loaded "$status"; then break; fi
         sleep 1
     done
 fi

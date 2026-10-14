@@ -1,8 +1,10 @@
-# VX Genome Viewer — Keyboard Shortcuts
+# VX: Keyboard Shortcuts
 
-Every shortcut is rebindable from **Settings → Hotkeys**. The
-defaults below are the out-of-the-box bindings on Linux and
-Windows. On macOS, `Ctrl` is `Cmd`.
+Every shortcut below can be rebound in Settings (see
+*Customising*). The defaults are the out-of-the-box bindings. On
+macOS they use the Command key where this page says `Ctrl`
+(Command-O, Command-Q), and Settings shows them as `Cmd+`;
+shortcuts saved by an earlier version are read the same way.
 
 ---
 
@@ -10,10 +12,11 @@ Windows. On macOS, `Ctrl` is `Cmd`.
 
 | Action | Default |
 |---|---|
-| Open file | `Ctrl+O` |
+| Open a reference genome (FASTA) | `Ctrl+O` |
 | Save session | `Ctrl+S` |
 | Load session | `Ctrl+Shift+O` |
-| Export snapshot | `Ctrl+Shift+E` |
+| Export snapshot (PNG, JPEG or TIFF) | `Ctrl+Shift+E` |
+| Export SVG | `Ctrl+Shift+V` |
 | Settings | `Ctrl+,` |
 | Quit | `Ctrl+Q` |
 
@@ -22,11 +25,11 @@ Windows. On macOS, `Ctrl` is `Cmd`.
 | Action | Default |
 |---|---|
 | Pan left / right | `←` / `→` |
-| Pan up / down (vertical tracks) | `↑` / `↓` |
 | Zoom in / out | `Ctrl++` / `Ctrl+-` |
-| Zoom to fit | `Ctrl+0` |
+| Zoom to fit (the whole chromosome) | `Ctrl+0` |
+| Fit to window (the selection, else the largest gene or feature in view, else the chromosome) | `W` |
 | Jump to start / end of chromosome | `Home` / `End` |
-| Region search | `Ctrl+F` |
+| Region search (puts the cursor in the search entry) | `Ctrl+F` |
 
 ## View
 
@@ -43,15 +46,15 @@ Windows. On macOS, `Ctrl` is `Cmd`.
 | Action | Default |
 |---|---|
 | Show magnifier inset | Hold `Alt` while hovering |
-| Increase magnification | `+` or `=` (while magnifier visible) |
-| Decrease magnification | `-` (while magnifier visible) |
-| Fine adjust | `Alt + scroll wheel` |
+| Increase magnification | `+` or `=` (while `Alt` is held) |
+| Decrease magnification | `-` (while `Alt` is held) |
+| Adjust magnification | `Alt` + scroll wheel |
 
 ## Bookmarks
 
 | Action | Default |
 |---|---|
-| Add bookmark for current region | `Ctrl+B` |
+| Add a bookmark of the view (nothing while no reference is loaded) | `Ctrl+B` |
 | Next bookmark | `Ctrl+]` |
 | Previous bookmark | `Ctrl+[` |
 
@@ -61,26 +64,26 @@ Windows. On macOS, `Ctrl` is `Cmd`.
 |---|---|
 | Start / stop video recording | `Ctrl+Shift+R` |
 
-## Tracks
+## Mouse
 
-| Action | Default |
+| Action | Mouse |
 |---|---|
-| Toggle visibility of selected track | `V` |
-| Increase track height | `Ctrl+Shift+=` |
-| Decrease track height | `Ctrl+Shift+-` |
+| Pan | Scroll wheel, or drag |
+| Zoom | `Ctrl` + scroll wheel (`Command` on macOS) |
+
+The mouse actions are fixed; they are not rebound in Settings.
 
 ---
 
 ## Customising
 
-`Settings → Hotkeys` opens a per-action editor. Press any key
-combo while focused on a row to rebind. Conflicts are flagged
-inline. You can also reset a single binding to the default, or
-reset every binding to defaults.
+Settings > Hotkeys lists the bindings by category (File,
+Navigation, View, Bookmarks); *Export SVG* is set in Settings >
+Output > Capture, whose shortcuts frame shows the same bindings
+as the Hotkeys tab. Click a binding, then press the key
+combination you want; `Escape` clears the binding instead.
+*Reset All to Defaults* restores every binding.
 
-Custom bindings persist to `genome-viewer.cfg` (the `[hotkeys]`
-section).
-
-Refer to your client/terminal for chord-binding shorthand if you
-want to bind, for example, `Ctrl+K Ctrl+S` (Emacs-style) — the
-editor accepts up to two-key chords.
+Custom bindings are saved in `vx.cfg`, in its Hotkeys section, in
+GTK's accelerator format: `<Primary>O`, where `<Primary>` is
+Control, or Command on macOS.

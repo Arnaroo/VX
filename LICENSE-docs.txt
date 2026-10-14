@@ -1,4 +1,4 @@
-VX Genome Viewer — documentation and screenshots
+VX: documentation and screenshots
 =================================================
 
 Copyright (c) 2024-2026 Biocodecs Group / Arnaroo Ribologicals
@@ -12,7 +12,7 @@ Commons Attribution 4.0 International License (CC-BY-4.0):
 
 Summary of terms (NOT a substitute for the full license text above):
 
-* Attribution — you must give appropriate credit, provide a link
+* Attribution: you must give appropriate credit, provide a link
   to the license, and indicate if changes were made.
 
 * You are free to:
@@ -24,10 +24,10 @@ Summary of terms (NOT a substitute for the full license text above):
 This CC-BY-4.0 license applies only to the documentation and
 screenshots. It does NOT apply to:
 
-* The VX pre-compiled binaries (see LICENSE-binaries.txt —
-  CC-BY-NC-ND-4.0).
-* The MCP server source (see mcp/LICENSE — MIT).
-* The HTTP API specification (see api/LICENSE — MIT).
+* The VX pre-compiled binaries (CC-BY-NC-ND-4.0, see
+  LICENSE-binaries.txt).
+* The MCP server source (MIT, see mcp/LICENSE).
+* The HTTP API specification (MIT, see api/LICENSE).
 * The VX D source code (proprietary, not distributed via this
   repository).
 

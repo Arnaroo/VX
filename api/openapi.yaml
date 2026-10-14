@@ -1,46 +1,94 @@
 openapi: 3.1.0
 info:
-  title: VX Genome Viewer — HTTP API
+  title: "VX: HTTP API"
   version: "2.0"
-  summary: Localhost HTTP API for driving the VX Genome Viewer.
+  summary: Localhost HTTP API for driving VX.
   description: |
     VX runs an embedded HTTP server on `127.0.0.1:9876` for external tool
     integration (e.g. the Claude MCP server in `../mcp/vx_mcp_server.py`).
+    The port is set in Settings > MCP / API, or with `--port N` on the
+    command line. This document describes the API as VX 0.10.0 serves it
+    (`GET /ping` answers `"api_version":2`).
 
-    The API has five top-level endpoints:
+    The API's endpoints:
 
-      * `GET  /ping`                 — liveness check
-      * `GET  /state`                — full state snapshot
-      * `GET  /screenshot[/...]`     — PNG capture (full window / viewport / single track)
-      * `POST /navigate`             — legacy direct navigation (preserved for back-compat)
-      * `POST /command`              — generic dispatch entry point for all other actions
+      * `GET  /ping`:                  liveness check
+      * `GET  /state`:                 full state snapshot
+      * `GET  /screenshot[/...]`:      PNG capture (full window / viewport / single track)
+      * `POST /navigate`:              direct navigation (the MCP tool `vx_navigate` uses it)
+      * `POST /command`:               generic dispatch entry point for all other actions
 
     Nearly all functionality goes through `POST /command`. Each request body
     is `{ "command": "<name>", "params": { ... } }` and the response is
-    arbitrary JSON shaped by the command (see `RequestCommand_*` and
+    JSON shaped by the command (see the `RequestCommand_*` and
     `Response_*` schemas in `#/components`).
+
+    ## Commands (55)
+
+    - **File loading:** `load_file`
+    - **Track management:** `set_track_visibility`, `set_track_height`,
+      `set_track_scroll`, `remove_track`, `reorder_track`
+    - **Group management:** `create_group`, `switch_group`, `remove_group`
+    - **Navigation:** `navigate`, `zoom`, `pan`, `next_coverage_region`,
+      `cancel_coverage_scan`
+    - **Data queries:** `get_sequence`, `get_genes`, `search_genes`
+    - **Config:** `set_config`, `set_magnifier`
+    - **Selection:** `select_region`, `click_element`
+    - **Export:** `export_region`, `export_svg`, `export_image`,
+      `svg_export_status`
+    - **Loading state:** `loading_status`, `cancel_loading`
+    - **Bookmarks:** `add_bookmark`, `list_bookmarks`, `remove_bookmark`,
+      `goto_bookmark`
+    - **Chromosomes:** `list_chromosomes`
+    - **Track options:** `set_signal_options`, `set_variant_options`,
+      `set_interaction_options`, `set_alignment_options`
+    - **Read aggregates and transcript DTI:** `add_aggregate_track`,
+      `set_aggregate_options`, `aggregate_rows`, `add_dti_track`,
+      `set_dti_options`, `dti_lookup`
+    - **Analysis:** `list_analyses`, `run_analysis`, `analysis_status`,
+      `cancel_analysis`, `read_result_rows`
+    - **Recording:** `start_recording`, `stop_recording`, `recording_status`
+    - **Sessions and the process:** `save_session`, `load_session`, `shutdown`
+    - **Demo data:** `load_demo`, `demo_status`
+
+    Two commands answer when their work ends, not at once:
+    `next_coverage_region` (when its scan ends) and `read_result_rows` (when
+    its page is read). Give them no short client timeout.
 
     ## Security model
 
     The server binds to `127.0.0.1` only, has no authentication, and is
-    intended for same-machine use. If you want remote access, tunnel
-    over SSH: `ssh -L 9876:127.0.0.1:9876 user@host`.
+    intended for same-machine use. It sends no CORS headers and answers
+    `OPTIONS` with 405, so a page in a web browser cannot drive it. If you
+    want remote access, tunnel over SSH: `ssh -L 9876:127.0.0.1:9876 user@host`.
 
     ## Error model
 
-    Failed commands return a JSON body with at least:
+    Failed requests return a JSON body with:
 
-      * `error`   — human-readable message
-      * `code`    — one of `INVALID_PARAMS`, `NOT_FOUND`, `NOT_READY`,
-                    `INVALID_STATE`, `OPERATION_FAILED`, `UNKNOWN_COMMAND`,
-                    `DEPENDENCY_MISSING`, `TIMEOUT`, `PARSE_ERROR`,
-                    `UNKNOWN_ENDPOINT`, `INTERNAL_ERROR`
-      * `details` — optional remediation hint
+      * `error`:    human-readable message
+      * `code`:     machine-readable code (`ErrorBody` lists them)
+      * `details`:  optional remediation hint
+
+    Since 0.10.0 the HTTP status follows the code (a success is 200):
+    400 for `INVALID_PARAMS`, `PARSE_ERROR`, `UNKNOWN_ANALYSIS` and
+    `NOT_SUPPORTED`; 403 for `NOT_A_RESULT`; 404 for `UNKNOWN_COMMAND`,
+    `UNKNOWN_ENDPOINT`, `NOT_FOUND` and any code ending in `_NOT_FOUND`;
+    405 for `METHOD_NOT_ALLOWED`; 409 for `BUSY`, `INVALID_STATE`,
+    `NO_REFERENCE` and `NO_ANNOTATION`; 501 for `NOT_IMPLEMENTED`; 503 for
+    `NOT_READY` and `NO_RENDER`; 504 for `TIMEOUT` and `STALLED`; 500 for
+    `OPERATION_FAILED`, `IO_ERROR`, `DEPENDENCY_MISSING`, `INTERNAL_ERROR`
+    and an error without a code.
+
+    Each request gets its own answer. The window's answer is awaited for the
+    API timeout (Settings > Appearance > Performance, 30 s by default); past
+    it the request is answered 504 `TIMEOUT`, may still be carried out, and
+    its late answer is dropped and named in VX's log.
   license:
     name: MIT
     identifier: MIT
   contact:
-    name: VX Genome Viewer
+    name: VX
     url: https://github.com/Arnaroo/VX
 
 servers:
@@ -54,20 +102,6 @@ tags:
     description: PNG screenshot endpoints
   - name: navigation
     description: Viewport navigation, zoom, pan
-  - name: files
-    description: File loading and export
-  - name: tracks
-    description: Track and group management
-  - name: queries
-    description: Sequence and annotation lookups
-  - name: config
-    description: Display configuration
-  - name: bookmarks
-    description: Region bookmarks
-  - name: analysis
-    description: Background analysis framework
-  - name: recording
-    description: Video recording of the viewport
 
 paths:
   /ping:
@@ -84,7 +118,7 @@ paths:
                 $ref: "#/components/schemas/PingResponse"
               example:
                 status: ok
-                app: VX Genome Viewer
+                app: VX
                 api_version: 2
 
   /state:
@@ -93,9 +127,9 @@ paths:
       operationId: getState
       summary: Full snapshot of VX state.
       description: |
-        Returns viewport position, loaded groups, tracks, chromosomes,
-        and current configuration. Use this to discover available track
-        and group names for other commands.
+        Returns the view, the loaded groups, tracks and chromosomes, the
+        current configuration and what the last session restore did. Use
+        this to discover available track and group names for other commands.
       responses:
         "200":
           description: Current VX state.
@@ -105,24 +139,34 @@ paths:
                 $ref: "#/components/schemas/StateResponse"
         "503":
           $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /screenshot:
     get:
       tags: [capture]
       operationId: screenshotFull
-      summary: PNG screenshot of the entire VX window.
+      summary: PNG of the entire VX window, rendered.
+      description: |
+        Draws the whole window (toolbar, panels and the track area) into an
+        image at the scale asked for; nothing is read from the screen. The
+        track area in it is what the window's OpenGL area last drew.
       parameters:
         - $ref: "#/components/parameters/ScaleQuery"
       responses:
         "200":
-          description: PNG image.
+          description: PNG image (RGB, no alpha channel).
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "503":
           $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /screenshot/full:
     get:
@@ -133,34 +177,53 @@ paths:
         - $ref: "#/components/parameters/ScaleQuery"
       responses:
         "200":
-          description: PNG image.
+          description: PNG image (RGB, no alpha channel).
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /screenshot/viewport:
     get:
       tags: [capture]
       operationId: screenshotViewport
-      summary: PNG of just the GL viewport (no UI chrome).
+      summary: PNG of the track area alone (no window controls).
+      description: |
+        Renders the track area off screen at the scale asked for. A viewer
+        without an OpenGL context (as without a display) answers 503
+        `NO_RENDER` with the reason in `details`.
       parameters:
         - $ref: "#/components/parameters/ScaleQuery"
       responses:
         "200":
-          description: PNG image. `scale > 1.0` uses an off-screen FBO for publication-quality output.
+          description: PNG image (RGB, no alpha channel).
           content:
             image/png:
               schema:
                 type: string
                 format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /screenshot/track:
     get:
       tags: [capture]
       operationId: screenshotTrack
       summary: PNG of a single track including its label area.
+      description: |
+        Renders one visible track whole, wherever it sits in the track area.
+        The name is percent-decoded (`%20` and `+` are spaces).
       parameters:
         - in: query
           name: name
@@ -171,7 +234,7 @@ paths:
         - $ref: "#/components/parameters/ScaleQuery"
       responses:
         "200":
-          description: PNG image.
+          description: PNG image (RGB, no alpha channel).
           content:
             image/png:
               schema:
@@ -179,15 +242,25 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /navigate:
     post:
       tags: [navigation]
       operationId: navigateLegacy
-      summary: Legacy direct navigation endpoint.
+      summary: Direct navigation endpoint.
       description: |
-        Functionally equivalent to `POST /command` with `command: "navigate"`,
-        but preserved for back-compatibility with VX API v1 clients.
+        Navigates to a region, as `POST /command` with `command: "navigate"`
+        does, and answers `{"success": true}`. A chromosome that is not in
+        the loaded reference, or an empty range, answers 400
+        `INVALID_PARAMS` here (`navigate` through `/command` answers 404
+        `NOT_FOUND` for an unknown chromosome). The MCP tool `vx_navigate`
+        uses this endpoint.
       requestBody:
         required: true
         content:
@@ -203,8 +276,12 @@ paths:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/ServerError"
         "503":
           $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
   /command:
     post:
@@ -213,31 +290,11 @@ paths:
       summary: Dispatch a named command.
       description: |
         Single entry point for the majority of VX functionality. The
-        request body is `{ "command": "<name>", "params": { ... } }`.
+        request body is `{ "command": "<name>", "params": { ... } }`; the
+        55 commands are listed in this document's description.
 
         Every documented `RequestCommand_*` schema in `#/components` can
         be POSTed here verbatim; the `command` field is the discriminator.
-
-        Available commands (40 total):
-
-        - **File loading:** `load_file`
-        - **Track management:** `set_track_visibility`, `set_track_height`,
-          `set_track_scroll`, `remove_track`, `reorder_track`
-        - **Group management:** `create_group`, `switch_group`, `remove_group`
-        - **Navigation:** `navigate`, `zoom`, `pan`, `next_coverage_region`
-        - **Data queries:** `get_sequence`, `get_genes`, `search_genes`
-        - **Config:** `set_config`, `set_magnifier`
-        - **Selection:** `select_region`
-        - **Export:** `export_region`, `export_svg`, `svg_export_status`
-        - **Loading state:** `loading_status`, `cancel_loading`
-        - **Bookmarks:** `add_bookmark`, `list_bookmarks`, `remove_bookmark`,
-          `goto_bookmark`
-        - **Chromosomes:** `list_chromosomes`
-        - **Track options:** `set_signal_options`, `set_variant_options`,
-          `set_interaction_options`, `set_alignment_options`
-        - **Analysis:** `list_analyses`, `run_analysis`, `analysis_status`,
-          `cancel_analysis`
-        - **Recording:** `start_recording`, `stop_recording`, `recording_status`
       requestBody:
         required: true
         content:
@@ -245,10 +302,6 @@ paths:
             schema:
               oneOf:
                 - $ref: "#/components/schemas/RequestCommand_load_file"
-                - $ref: "#/components/schemas/RequestCommand_navigate"
-                - $ref: "#/components/schemas/RequestCommand_zoom"
-                - $ref: "#/components/schemas/RequestCommand_pan"
-                - $ref: "#/components/schemas/RequestCommand_next_coverage_region"
                 - $ref: "#/components/schemas/RequestCommand_set_track_visibility"
                 - $ref: "#/components/schemas/RequestCommand_set_track_height"
                 - $ref: "#/components/schemas/RequestCommand_set_track_scroll"
@@ -257,14 +310,21 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_create_group"
                 - $ref: "#/components/schemas/RequestCommand_switch_group"
                 - $ref: "#/components/schemas/RequestCommand_remove_group"
+                - $ref: "#/components/schemas/RequestCommand_navigate"
+                - $ref: "#/components/schemas/RequestCommand_zoom"
+                - $ref: "#/components/schemas/RequestCommand_pan"
+                - $ref: "#/components/schemas/RequestCommand_next_coverage_region"
+                - $ref: "#/components/schemas/RequestCommand_cancel_coverage_scan"
                 - $ref: "#/components/schemas/RequestCommand_get_sequence"
                 - $ref: "#/components/schemas/RequestCommand_get_genes"
                 - $ref: "#/components/schemas/RequestCommand_search_genes"
                 - $ref: "#/components/schemas/RequestCommand_set_config"
                 - $ref: "#/components/schemas/RequestCommand_set_magnifier"
                 - $ref: "#/components/schemas/RequestCommand_select_region"
+                - $ref: "#/components/schemas/RequestCommand_click_element"
                 - $ref: "#/components/schemas/RequestCommand_export_region"
                 - $ref: "#/components/schemas/RequestCommand_export_svg"
+                - $ref: "#/components/schemas/RequestCommand_export_image"
                 - $ref: "#/components/schemas/RequestCommand_svg_export_status"
                 - $ref: "#/components/schemas/RequestCommand_loading_status"
                 - $ref: "#/components/schemas/RequestCommand_cancel_loading"
@@ -277,43 +337,132 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_set_variant_options"
                 - $ref: "#/components/schemas/RequestCommand_set_interaction_options"
                 - $ref: "#/components/schemas/RequestCommand_set_alignment_options"
+                - $ref: "#/components/schemas/RequestCommand_add_aggregate_track"
+                - $ref: "#/components/schemas/RequestCommand_set_aggregate_options"
+                - $ref: "#/components/schemas/RequestCommand_aggregate_rows"
+                - $ref: "#/components/schemas/RequestCommand_add_dti_track"
+                - $ref: "#/components/schemas/RequestCommand_set_dti_options"
+                - $ref: "#/components/schemas/RequestCommand_dti_lookup"
                 - $ref: "#/components/schemas/RequestCommand_list_analyses"
                 - $ref: "#/components/schemas/RequestCommand_run_analysis"
                 - $ref: "#/components/schemas/RequestCommand_analysis_status"
                 - $ref: "#/components/schemas/RequestCommand_cancel_analysis"
+                - $ref: "#/components/schemas/RequestCommand_read_result_rows"
                 - $ref: "#/components/schemas/RequestCommand_start_recording"
                 - $ref: "#/components/schemas/RequestCommand_stop_recording"
                 - $ref: "#/components/schemas/RequestCommand_recording_status"
+                - $ref: "#/components/schemas/RequestCommand_save_session"
+                - $ref: "#/components/schemas/RequestCommand_load_session"
+                - $ref: "#/components/schemas/RequestCommand_shutdown"
+                - $ref: "#/components/schemas/RequestCommand_load_demo"
+                - $ref: "#/components/schemas/RequestCommand_demo_status"
               discriminator:
                 propertyName: command
+                mapping:
+                  load_file: "#/components/schemas/RequestCommand_load_file"
+                  set_track_visibility: "#/components/schemas/RequestCommand_set_track_visibility"
+                  set_track_height: "#/components/schemas/RequestCommand_set_track_height"
+                  set_track_scroll: "#/components/schemas/RequestCommand_set_track_scroll"
+                  remove_track: "#/components/schemas/RequestCommand_remove_track"
+                  reorder_track: "#/components/schemas/RequestCommand_reorder_track"
+                  create_group: "#/components/schemas/RequestCommand_create_group"
+                  switch_group: "#/components/schemas/RequestCommand_switch_group"
+                  remove_group: "#/components/schemas/RequestCommand_remove_group"
+                  navigate: "#/components/schemas/RequestCommand_navigate"
+                  zoom: "#/components/schemas/RequestCommand_zoom"
+                  pan: "#/components/schemas/RequestCommand_pan"
+                  next_coverage_region: "#/components/schemas/RequestCommand_next_coverage_region"
+                  cancel_coverage_scan: "#/components/schemas/RequestCommand_cancel_coverage_scan"
+                  get_sequence: "#/components/schemas/RequestCommand_get_sequence"
+                  get_genes: "#/components/schemas/RequestCommand_get_genes"
+                  search_genes: "#/components/schemas/RequestCommand_search_genes"
+                  set_config: "#/components/schemas/RequestCommand_set_config"
+                  set_magnifier: "#/components/schemas/RequestCommand_set_magnifier"
+                  select_region: "#/components/schemas/RequestCommand_select_region"
+                  click_element: "#/components/schemas/RequestCommand_click_element"
+                  export_region: "#/components/schemas/RequestCommand_export_region"
+                  export_svg: "#/components/schemas/RequestCommand_export_svg"
+                  export_image: "#/components/schemas/RequestCommand_export_image"
+                  svg_export_status: "#/components/schemas/RequestCommand_svg_export_status"
+                  loading_status: "#/components/schemas/RequestCommand_loading_status"
+                  cancel_loading: "#/components/schemas/RequestCommand_cancel_loading"
+                  add_bookmark: "#/components/schemas/RequestCommand_add_bookmark"
+                  list_bookmarks: "#/components/schemas/RequestCommand_list_bookmarks"
+                  remove_bookmark: "#/components/schemas/RequestCommand_remove_bookmark"
+                  goto_bookmark: "#/components/schemas/RequestCommand_goto_bookmark"
+                  list_chromosomes: "#/components/schemas/RequestCommand_list_chromosomes"
+                  set_signal_options: "#/components/schemas/RequestCommand_set_signal_options"
+                  set_variant_options: "#/components/schemas/RequestCommand_set_variant_options"
+                  set_interaction_options: "#/components/schemas/RequestCommand_set_interaction_options"
+                  set_alignment_options: "#/components/schemas/RequestCommand_set_alignment_options"
+                  add_aggregate_track: "#/components/schemas/RequestCommand_add_aggregate_track"
+                  set_aggregate_options: "#/components/schemas/RequestCommand_set_aggregate_options"
+                  aggregate_rows: "#/components/schemas/RequestCommand_aggregate_rows"
+                  add_dti_track: "#/components/schemas/RequestCommand_add_dti_track"
+                  set_dti_options: "#/components/schemas/RequestCommand_set_dti_options"
+                  dti_lookup: "#/components/schemas/RequestCommand_dti_lookup"
+                  list_analyses: "#/components/schemas/RequestCommand_list_analyses"
+                  run_analysis: "#/components/schemas/RequestCommand_run_analysis"
+                  analysis_status: "#/components/schemas/RequestCommand_analysis_status"
+                  cancel_analysis: "#/components/schemas/RequestCommand_cancel_analysis"
+                  read_result_rows: "#/components/schemas/RequestCommand_read_result_rows"
+                  start_recording: "#/components/schemas/RequestCommand_start_recording"
+                  stop_recording: "#/components/schemas/RequestCommand_stop_recording"
+                  recording_status: "#/components/schemas/RequestCommand_recording_status"
+                  save_session: "#/components/schemas/RequestCommand_save_session"
+                  load_session: "#/components/schemas/RequestCommand_load_session"
+                  shutdown: "#/components/schemas/RequestCommand_shutdown"
+                  load_demo: "#/components/schemas/RequestCommand_load_demo"
+                  demo_status: "#/components/schemas/RequestCommand_demo_status"
       responses:
         "200":
           description: |
-            Command-specific JSON response. Schemas vary per command — see
+            Command-specific JSON response. Schemas vary per command: see
             the matching `Response_<command>` schema in `#/components` for
-            common patterns. On failure, this endpoint still returns
-            HTTP 200 with a JSON body containing `error` + `code`.
+            common patterns. A failure carries the HTTP status of its `code`
+            (below) with a JSON body holding `error` and `code`.
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/SuccessResponse"
-                  - $ref: "#/components/schemas/ErrorBody"
                   - $ref: "#/components/schemas/Response_navigate"
                   - $ref: "#/components/schemas/Response_zoom"
+                  - $ref: "#/components/schemas/Response_next_coverage_region"
+                  - $ref: "#/components/schemas/Response_cancel_coverage_scan"
                   - $ref: "#/components/schemas/Response_get_sequence"
                   - $ref: "#/components/schemas/Response_get_genes"
                   - $ref: "#/components/schemas/Response_search_genes"
+                  - $ref: "#/components/schemas/Response_click_element"
+                  - $ref: "#/components/schemas/Response_export_region"
+                  - $ref: "#/components/schemas/Response_export_image"
                   - $ref: "#/components/schemas/Response_list_chromosomes"
                   - $ref: "#/components/schemas/Response_list_bookmarks"
                   - $ref: "#/components/schemas/Response_loading_status"
+                  - $ref: "#/components/schemas/Response_run_analysis"
                   - $ref: "#/components/schemas/Response_analysis_status"
+                  - $ref: "#/components/schemas/Response_read_result_rows"
                   - $ref: "#/components/schemas/Response_recording_status"
-                  - $ref: "#/components/schemas/Response_export_region"
+                  - $ref: "#/components/schemas/Response_save_session"
+                  - $ref: "#/components/schemas/Response_load_session"
+                  - $ref: "#/components/schemas/Response_load_demo"
+                  - $ref: "#/components/schemas/Response_demo_status"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/ServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
         "503":
           $ref: "#/components/responses/NotReady"
+        "504":
+          $ref: "#/components/responses/Timeout"
 
 components:
   parameters:
@@ -323,18 +472,17 @@ components:
       required: false
       schema:
         type: number
-        minimum: 0.5
+        minimum: 0.25
         maximum: 8.0
         default: 1.0
       description: |
-        Resolution scale factor. 1.0 = screen resolution. Values > 1.0
-        use off-screen FBO rendering for high-DPI captures. Clamped
-        server-side to [0.5, 8.0]. Only meaningful for viewport and
-        single-track captures.
+        Resolution scale factor, from 0.25 to 8. 1.0 = screen resolution.
+        A scale outside that range (or text that is not a number) is
+        refused with 400 `INVALID_PARAMS`, naming it.
 
   responses:
     BadRequest:
-      description: Malformed request.
+      description: "A request the client can mend (INVALID_PARAMS, PARSE_ERROR, UNKNOWN_ANALYSIS, NOT_SUPPORTED)."
       content:
         application/json:
           schema:
@@ -342,15 +490,63 @@ components:
           example:
             error: "Required: chromosome, start, end (end > start)"
             code: INVALID_PARAMS
-    NotReady:
-      description: VX is still starting up.
+    Forbidden:
+      description: "A path read_result_rows does not read (NOT_A_RESULT)."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorBody"
           example:
-            error: "Application not ready — callbacks not yet registered"
+            error: "Not a result of this viewer: /tmp/other.tsv"
+            code: NOT_A_RESULT
+    NotFound:
+      description: "A name that is not there (UNKNOWN_COMMAND, UNKNOWN_ENDPOINT, NOT_FOUND)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            error: "Track not found: reads.bam"
+            code: NOT_FOUND
+    Conflict:
+      description: "A state the request conflicts with (BUSY, INVALID_STATE, NO_REFERENCE, NO_ANNOTATION)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            error: "An analysis is already running"
+            code: INVALID_STATE
+    ServerError:
+      description: "The operation was attempted and failed (OPERATION_FAILED, IO_ERROR, DEPENDENCY_MISSING, INTERNAL_ERROR, or no code)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            error: "ffmpeg not found"
+            code: DEPENDENCY_MISSING
+    NotImplemented:
+      description: "Not implemented in this version (NOT_IMPLEMENTED)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    NotReady:
+      description: "The viewer cannot serve it now (NOT_READY, NO_RENDER): still starting, nothing loaded, no OpenGL context for a capture."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+          example:
+            error: "Application not ready: callbacks not yet registered"
             code: NOT_READY
+    Timeout:
+      description: "The window did not answer in time (TIMEOUT; the request may still be carried out), or a coverage scan read nothing for 60 s (STALLED)."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
 
   schemas:
     # ── Core envelopes ─────────────────────────────────────────────
@@ -362,19 +558,30 @@ components:
           type: string
         code:
           type: string
+          description: The codes VX sends; the HTTP status follows the code.
           enum:
             - INVALID_PARAMS
-            - NOT_FOUND
-            - NOT_READY
-            - INVALID_STATE
-            - OPERATION_FAILED
+            - PARSE_ERROR
+            - UNKNOWN_ANALYSIS
+            - NOT_SUPPORTED
+            - NOT_A_RESULT
             - UNKNOWN_COMMAND
             - UNKNOWN_ENDPOINT
-            - DEPENDENCY_MISSING
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - BUSY
+            - INVALID_STATE
+            - NO_REFERENCE
+            - NO_ANNOTATION
+            - NOT_IMPLEMENTED
+            - NOT_READY
+            - NO_RENDER
             - TIMEOUT
-            - PARSE_ERROR
+            - STALLED
+            - OPERATION_FAILED
+            - IO_ERROR
+            - DEPENDENCY_MISSING
             - INTERNAL_ERROR
-            - NOT_SUPPORTED
         details:
           type: string
 
@@ -415,11 +622,32 @@ components:
           type: array
           items:
             type: object
+            description: |
+              Every track has name, type, visible and height; a track of a
+              given kind also has its own entry: an interaction track
+              `interaction` (opacity, customOpacity) and, once TAD Boundary
+              Detection ran on it, `tadBoundaries`; a signal track `signal`
+              (source, window); a result track `result` (analysis,
+              analysisName, file, manifest, parameters); a feature track
+              `feature`; an alignment track `readLayout`, `totalMappedReads`,
+              `coverageReadTo` and `indegra`; a DTI track `dti`.
             properties:
               name:    { type: string }
               type:    { type: string }
               visible: { type: boolean }
               height:  { type: number }
+              interaction: { type: object }
+              tadBoundaries: { type: object }
+              signal: { type: [object, "null"] }
+              result: { type: object }
+              feature: { type: object }
+              readLayout: { type: object }
+              totalMappedReads: { type: integer }
+              coverageReadTo:
+                type: [integer, "null"]
+                description: The last base (1-based) whose depth the coverage strip read whole, when the view held more records than the read budget; null when the window was read whole.
+              indegra: { type: object }
+              dti: { type: object }
         chromosomes:
           type: array
           items:
@@ -452,8 +680,38 @@ components:
             intronCollapseEnabled: { type: boolean }
         windowWidth:  { type: integer }
         windowHeight: { type: integer }
+        viewportWidth:  { type: integer, description: "The track area's width in logical pixels." }
+        viewportHeight: { type: integer, description: "The track area's height in logical pixels." }
+        scaleFactor:    { type: number }
+        headless:       { type: boolean, description: "The viewer runs without a window." }
+        sessionRestoring:
+          type: boolean
+          description: A restore is still applying its tracks' settings; wait for false before reading them.
+        results_reused:
+          type: array
+          items: { type: string }
+          description: After a session load, the result files loaded again as their tracks.
+        results_missing:
+          type: array
+          items: { type: string }
+          description: After a session load, the result files that were not there.
+        results_status:
+          type: string
+          description: The restore's status line, naming what it did not make and why.
+        restore_skipped:
+          type: array
+          description: Each part of the session the restore did not make.
+          items:
+            $ref: "#/components/schemas/RestoreSkipped"
 
-    # ── Legacy /navigate request body ─────────────────────────────
+    RestoreSkipped:
+      type: object
+      properties:
+        group:  { type: string }
+        track:  { type: string }
+        reason: { type: string }
+
+    # ── /navigate request body ─────────────────────────────────────
     NavigateLegacyRequest:
       type: object
       required: [chromosome, start, end]
@@ -474,6 +732,13 @@ components:
 
     # ── Per-command request schemas ───────────────────────────────
     RequestCommand_load_file:
+      description: |
+        Loads a file, its type by its extension (a `.gz` or `.bgz` file by
+        the extension before it). The answer is "Loading <kind>: <name>"
+        when the load starts now, or "Queued: <name> (position N)" with
+        `queued` true and `position` when it waits behind another load.
+        A file that is not there answers 404 `NOT_FOUND`; a `.bam` that is
+        not BGZF, or is cut short, is refused with the reason.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -485,68 +750,7 @@ components:
               properties:
                 path:
                   type: string
-                  description: Absolute path to FASTA / GTF / GFF / BAM / VCF / BED / BedGraph / Wig / BigWig / BigBed / BEDPE file.
-
-    RequestCommand_navigate:
-      allOf:
-        - $ref: "#/components/schemas/CommandEnvelope"
-        - type: object
-          properties:
-            command: { type: string, const: navigate }
-            params:
-              type: object
-              required: [chromosome, start, end]
-              properties:
-                chromosome: { type: string }
-                start:      { type: integer, minimum: 0 }
-                end:        { type: integer, minimum: 1 }
-
-    RequestCommand_zoom:
-      allOf:
-        - $ref: "#/components/schemas/CommandEnvelope"
-        - type: object
-          properties:
-            command: { type: string, const: zoom }
-            params:
-              type: object
-              required: [factor]
-              properties:
-                factor:
-                  type: number
-                  exclusiveMinimum: 0
-                  description: ">1 zooms in, <1 zooms out."
-
-    RequestCommand_pan:
-      allOf:
-        - $ref: "#/components/schemas/CommandEnvelope"
-        - type: object
-          properties:
-            command: { type: string, const: pan }
-            params:
-              type: object
-              required: [offset]
-              properties:
-                offset:
-                  type: integer
-                  description: "Bases to shift. Positive = right, negative = left."
-
-    RequestCommand_next_coverage_region:
-      allOf:
-        - $ref: "#/components/schemas/CommandEnvelope"
-        - type: object
-          properties:
-            command: { type: string, const: next_coverage_region }
-            params:
-              type: object
-              properties:
-                direction:
-                  type: string
-                  enum: [next, prev, previous, left, right, "+1", "-1"]
-                  default: next
-                threshold:
-                  type: number
-                  minimum: 0
-                  description: Coverage threshold. Negative or omitted = use current spinner value.
+                  description: Absolute path to a FASTA / GTF / GFF / BAM / VCF / BED / bedGraph / Wiggle / BigWig / BigBed / BEDPE file, or an INDEGRA process table.
 
     RequestCommand_set_track_visibility:
       allOf:
@@ -584,8 +788,8 @@ components:
               type: object
               required: [name, offset]
               properties:
-                name:   { type: string }
-                offset: { type: number, minimum: 0 }
+                name:   { type: string, description: "An alignment track's name (another kind of track answers NOT_SUPPORTED)." }
+                offset: { type: number, description: "Pixels from the top of the read rows; a negative value is read as 0." }
 
     RequestCommand_remove_track:
       allOf:
@@ -648,6 +852,89 @@ components:
               properties:
                 name: { type: string }
 
+    RequestCommand_navigate:
+      description: The chromosome may be any alias of the reference's name (chr1, 1); one that is not in the loaded reference answers 404 NOT_FOUND.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: navigate }
+            params:
+              type: object
+              required: [chromosome, start, end]
+              properties:
+                chromosome: { type: string }
+                start:      { type: integer, minimum: 0 }
+                end:        { type: integer, minimum: 1, description: "Exclusive; must be greater than start." }
+
+    RequestCommand_zoom:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: zoom }
+            params:
+              type: object
+              required: [factor]
+              properties:
+                factor:
+                  type: number
+                  exclusiveMinimum: 0
+                  description: ">1 zooms in, <1 zooms out."
+
+    RequestCommand_pan:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: pan }
+            params:
+              type: object
+              required: [offset]
+              properties:
+                offset:
+                  type: integer
+                  description: "Bases to shift. Positive = right, negative = left."
+
+    RequestCommand_next_coverage_region:
+      description: |
+        Scans one track's coverage on the chromosome in view and goes to
+        the next (or previous) region whose coverage meets the threshold;
+        the answer comes when the scan ends. One scan runs at a time: a
+        call while one runs answers 409 `BUSY`. A scan cancelled (by
+        `cancel_coverage_scan` or the panel) answers at once with
+        `cancelled` true; a scan that reads nothing for 60 s answers 504
+        `STALLED`.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: next_coverage_region }
+            params:
+              type: object
+              properties:
+                direction:
+                  description: "next (default) or prev; previous, left, right, +1, -1 and 1 are read too, and so is a number (its sign)."
+                  oneOf:
+                    - type: string
+                      enum: [next, prev, previous, left, right, "+1", "-1", "1"]
+                    - type: number
+                threshold:
+                  type: number
+                  description: Coverage threshold (0 is any coverage above 0); a negative value, or none, uses the left panel's spinner value.
+                track:
+                  type: string
+                  description: The track to scan; else the first visible coverage track, else the first visible alignment or signal track.
+
+    RequestCommand_cancel_coverage_scan:
+      description: Cancels the running coverage scan; answered 200 with cancelled true (and the scan's track and chromosome) when one ran, else false.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: cancel_coverage_scan }
+            params:  { type: object }
+
     RequestCommand_get_sequence:
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
@@ -657,9 +944,9 @@ components:
             params:
               type: object
               properties:
-                chromosome: { type: string }
-                start:      { type: integer, minimum: 0 }
-                end:        { type: integer, minimum: 1, description: "Inclusive max-region: end-start ≤ 100000." }
+                chromosome: { type: string, description: "Default: the chromosome in view." }
+                start:      { type: integer, minimum: 0, description: "Default: the view's start." }
+                end:        { type: integer, minimum: 1, description: "Default: the view's end. At most 100,000 bases a request (end - start)." }
 
     RequestCommand_get_genes:
       allOf:
@@ -670,9 +957,9 @@ components:
             params:
               type: object
               properties:
-                chromosome: { type: string }
-                start:      { type: integer, minimum: 0 }
-                end:        { type: integer, minimum: 1 }
+                chromosome: { type: string, description: "Default: the chromosome in view." }
+                start:      { type: integer, minimum: 0, description: "Default: the view's start." }
+                end:        { type: integer, minimum: 1, description: "Default: the view's end." }
 
     RequestCommand_search_genes:
       allOf:
@@ -689,6 +976,9 @@ components:
                   description: Case-insensitive partial match on gene name or ID. Up to 100 results.
 
     RequestCommand_set_config:
+      description: |
+        Changes only the keys given. A key set_config does not read is
+        refused by name (400 `INVALID_PARAMS`) before anything changes.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -700,10 +990,19 @@ components:
                 showGrid:        { type: boolean }
                 showLabels:      { type: boolean }
                 darkMode:        { type: boolean }
-                trackHeight:     { type: number }
-                interfaceScale:  { type: number, minimum: 0.5, maximum: 2.0 }
-                fontScale:       { type: number, minimum: 0.7, maximum: 2.0 }
                 activeModeEnabled: { type: boolean }
+                trackHeight:
+                  type: number
+                  minimum: 10
+                  description: The default height of every track added from now on in this run; it changes no existing track unless apply_to_existing is true.
+                apply_to_existing:
+                  type: boolean
+                  description: With trackHeight, true also sets that height on every track of the active group (default false).
+                interfaceScale:  { type: number, description: "The interface scale, clamped to 0.5 to 3." }
+                fontScale:       { type: number, description: "The text scale, clamped to 0.5 to 4." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     RequestCommand_set_magnifier:
       allOf:
@@ -714,11 +1013,11 @@ components:
             params:
               type: object
               properties:
-                active:   { type: boolean, default: true }
-                center_x: { type: number }
-                center_y: { type: number }
-                zoom:     { type: number, minimum: 1.5, maximum: 10.0 }
-                genome_x: { type: integer }
+                active:   { type: boolean, default: true, description: "false clears the API's magnifier and restores Alt+hover." }
+                center_x: { type: number, description: "Centre X in the track area's pixels." }
+                center_y: { type: number, description: "Centre Y in the track area's pixels (default: its vertical centre)." }
+                zoom:     { type: number, description: "Magnification, clamped to 1.5 to 10." }
+                genome_x: { type: integer, description: "A genomic position; takes priority over center_x." }
 
     RequestCommand_select_region:
       allOf:
@@ -728,14 +1027,38 @@ components:
             command: { type: string, const: select_region }
             params:
               type: object
-              required: [chromosome, start, end]
+              required: [start, end]
               properties:
-                chromosome: { type: string }
+                chromosome: { type: string, description: "Default: the chromosome in view." }
                 start:      { type: integer, minimum: 0 }
-                end:        { type: integer, minimum: 1 }
+                end:        { type: integer, minimum: 1, description: "Exclusive; must be greater than start." }
                 additive:   { type: boolean, default: false }
 
+    RequestCommand_click_element:
+      description: |
+        Clicks the track area as the mouse would, in its pixels (0,0 at its
+        top left, at the interface scale in force). Active Mode must be on
+        (`set_config` `activeModeEnabled`), else 503 `NOT_READY`.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: click_element }
+            params:
+              type: object
+              required: [x, y]
+              properties:
+                x:      { type: number }
+                y:      { type: number }
+                button: { type: integer, default: 1, description: "1 (left) selects; 3 (right) on a read not selected or a modification mark opens its information; any other number acts as 1." }
+                ctrl:   { type: boolean, default: false, description: "With button 1, add to the selection." }
+
     RequestCommand_export_region:
+      description: |
+        Writes the view's region. Nothing is written when there is nothing
+        to export: 409 `NO_REFERENCE` with no reference loaded, 409
+        `NO_ANNOTATION` for GFF with no gene or feature track visible in the
+        active group, 400 `INVALID_PARAMS` for another format.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -749,6 +1072,10 @@ components:
                 format: { type: string, enum: [fasta, gff], default: fasta }
 
     RequestCommand_export_svg:
+      description: |
+        Starts an SVG export of the view on a background thread (poll
+        `svg_export_status`). Each key not given takes its value from
+        Settings > Output > Capture.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -757,12 +1084,37 @@ components:
             params:
               type: object
               properties:
-                path:           { type: string, description: "Optional; defaults to auto-named file in Snapshots dir." }
-                include_ruler:  { type: boolean, default: true }
-                include_grid:   { type: boolean, default: true }
-                include_labels: { type: boolean, default: true }
-                dark_mode:      { type: boolean, default: false }
-                font_family:    { type: string, default: sans-serif }
+                path:             { type: string, description: "Optional; defaults to an auto-named file in the Snapshots directory." }
+                include_ruler:    { type: boolean }
+                include_grid:     { type: boolean }
+                include_labels:   { type: boolean }
+                include_overview: { type: boolean }
+                dark_mode:        { type: boolean }
+                font_family:      { type: string, description: "CSS font-family for the text." }
+                text_scale:       { type: number, minimum: 0.1, maximum: 10 }
+                track_scale:      { type: number, minimum: 0.1, maximum: 10 }
+
+    RequestCommand_export_image:
+      description: |
+        Writes the track area to an image file, as the Snapshot button
+        does: the view rendered off screen with the ruler and every visible
+        track. Each key not given takes its value from Settings > Output >
+        Capture. A scale the GPU cannot render is lowered to the largest it
+        can (`clamped` in the answer).
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: export_image }
+            params:
+              type: object
+              properties:
+                path:             { type: string, description: "The file to write; without it, the Snapshots directory and the configured name pattern." }
+                format:           { type: string, description: "png, jpeg or tiff (jpg and tif are read as jpeg and tiff); default: the path's extension, else Settings'." }
+                scale:            { type: number, exclusiveMinimum: 0 }
+                transparent:      { type: boolean, description: "PNG and TIFF: keep the background transparent." }
+                include_overlays: { type: boolean, description: "Draw the selection and hover overlays too." }
+                jpeg_quality:     { type: integer, description: "JPEG only." }
 
     RequestCommand_svg_export_status:
       allOf:
@@ -781,6 +1133,7 @@ components:
             params:  { type: object }
 
     RequestCommand_cancel_loading:
+      description: Stops the load in progress (and a demo case's download) at its next progress step; the queue goes on with the next file. Answers cancelled true when a load was running.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -789,6 +1142,11 @@ components:
             params:  { type: object }
 
     RequestCommand_add_bookmark:
+      description: |
+        Bookmarks the region given, as `region` or as chromosome, start and
+        end (0-based start, end exclusive, digits alone); one that does not
+        read is refused by name (400 `INVALID_PARAMS`). Without a region,
+        the view, once a reference is loaded (503 `NOT_READY` before).
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -797,11 +1155,12 @@ components:
             params:
               type: object
               properties:
-                label:      { type: string }
-                region:     { type: string, description: "'chr:start-end' format. If omitted, uses current viewport." }
+                label:      { type: string, description: "Default: the region." }
+                name:       { type: string, description: "Read as label when label is absent." }
+                region:     { type: string, description: "chromosome:start-end; the chromosome is everything before the last ':'." }
                 chromosome: { type: string }
-                start:      { type: integer }
-                end:        { type: integer }
+                start:      { type: [integer, string] }
+                end:        { type: [integer, string] }
 
     RequestCommand_list_bookmarks:
       allOf:
@@ -867,6 +1226,7 @@ components:
                 fill_alpha:       { type: number, minimum: 0.0, maximum: 1.0 }
 
     RequestCommand_set_variant_options:
+      description: A mode or a switch that is not one of those below is refused by name and nothing is changed.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -878,7 +1238,7 @@ components:
               properties:
                 name:             { type: string }
                 display_mode:     { type: string, enum: [lollipop, diamonds, bars, density] }
-                color_mode:       { type: string, enum: [type, quality, frequency, filter, impact] }
+                color_mode:       { type: string, enum: [type, quality, frequency, filter, impact, zygosity] }
                 filter_pass_only: { type: boolean }
                 min_quality:      { type: number }
                 min_allele_freq:  { type: number }
@@ -886,7 +1246,8 @@ components:
                 show_snps:        { type: boolean }
                 show_insertions:  { type: boolean }
                 show_deletions:   { type: boolean }
-                show_svs:         { type: boolean }
+                show_svs:         { type: boolean, description: "Structural and copy-number variants." }
+                show_other:       { type: boolean, description: "Multi-base substitutions and complex alleles." }
 
     RequestCommand_set_interaction_options:
       allOf:
@@ -903,14 +1264,17 @@ components:
                 color_mode:    { type: string, enum: [score, distance, solid] }
                 min_score:     { type: number }
                 intra_chr_only: { type: boolean }
-                arc_alpha:     { type: number, minimum: 0.0, maximum: 1.0 }
+                arc_alpha:     { type: number, minimum: 0.0, maximum: 1.0, description: "The track's own opacity, kept on both colour schemes." }
                 line_width:    { type: number }
 
     RequestCommand_set_alignment_options:
       description: |
-        BAM alignment-track display options. Many fields exist — see the
+        BAM alignment-track display options. Many fields exist: see the
         full list in the MCP server's `vx_set_alignment_options` signature.
-        Only fields the client wants to change need be provided.
+        Only fields the client wants to change need be provided. A value of
+        the wrong kind or out of range refuses the request and names its
+        key, before anything changes; the answer's `options` holds every
+        option of the track (send the name alone to read them).
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -927,10 +1291,16 @@ components:
                 show_multi_secondary:  { type: boolean }
                 show_mate_pairs:       { type: boolean }
                 show_back_splice:      { type: boolean }
-                density:               { type: string, enum: [auto, "1", "2", "3", "4", "5"] }
-                read_color_mode:       { type: string, enum: [class, strand, insert_size, solid] }
+                density:               { type: string, description: "auto, or a fixed level (1 to 4)." }
+                read_color_mode:       { type: string, description: "class (any other text reads as class), strand, insert_size, solid, mapq or indegra." }
                 show_trans_splice:     { type: boolean }
                 show_paired_as_fragments: { type: boolean }
+                sort_by:               { type: string, enum: [start, end, length, ref_length, edit_extent, mod_extent, mapq, strand] }
+                sort_order:            { type: string, enum: [ascending, descending] }
+                group_by:              { type: string, enum: [none, type, strand, haplotype, indegra, class] }
+                packing:               { type: string, enum: [dense, one_per_row] }
+                mod_extent_unit:       { type: string, enum: [per_read, per_base] }
+                filter_indegra:        { type: string, enum: [all, hide_reallocated, reallocated_only] }
                 read_sort_mode:        { type: string, enum: [start_pos, end_pos, length] }
                 segregate_reads_by_class: { type: boolean }
                 show_base_modifications: { type: boolean }
@@ -940,6 +1310,106 @@ components:
                 show_mod_aggregator:   { type: boolean }
                 show_polya_aggregator: { type: boolean }
                 show_mutation_aggregator: { type: boolean }
+                max_reads:             { type: integer, minimum: 0, maximum: 1000000, description: "Reads kept in view when subsampling is on (0: no cap); the view loads again." }
+                subsetting:            { type: boolean }
+                min_mapq:              { type: integer, minimum: 0, maximum: 255 }
+
+    RequestCommand_add_aggregate_track:
+      description: Adds a modification density or poly(A) tail track over an alignment track's BAM, below it; any option of set_aggregate_options may be given too. The answer names the new track.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: add_aggregate_track }
+            params:
+              type: object
+              required: [source, kind]
+              additionalProperties: true
+              properties:
+                source: { type: string, description: "The alignment track's name." }
+                kind:   { type: string, enum: [modifications, polya] }
+
+    RequestCommand_set_aggregate_options:
+      description: |
+        Modifications: display (bars, line, heat), height (stoichiometry,
+        modified, calls, confidence), opacity (confidence, stoichiometry,
+        none), opacity_floor (0 to 1), colour_mode (by_type, single),
+        colour ([r, g, b]), code_colours ({code: [r, g, b]}), threshold
+        (0 to 255), min_coverage, strand (both, plus, minus). Poly(A):
+        display (bars, box, violin), statistic (median, mean), anchor
+        (three_prime, right_end), bin_width (0: automatic), y_max (0:
+        automatic), min_reads, colour. Both: min_mapq, max_span. A bad
+        value is refused by name.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_aggregate_options }
+            params:
+              type: object
+              required: [name]
+              additionalProperties: true
+              properties:
+                name: { type: string }
+
+    RequestCommand_aggregate_rows:
+      description: The rows an aggregate track gives the region [start, end), counted now with its options; a region wider than the track's max_span is refused.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: aggregate_rows }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:       { type: string }
+                chromosome: { type: string, description: "Default: the chromosome in view." }
+                start:      { type: integer, minimum: 0, description: "Default: the view's start." }
+                end:        { type: integer, description: "Default: the view's end; exclusive." }
+                bin_width:  { type: integer, minimum: 1, description: "Default: 1 for modifications; the track's own, else 100, for poly(A)." }
+
+    RequestCommand_add_dti_track:
+      description: Adds a transcript DTI track, from an alignment track's YD tags (source) or from INDEGRA's process table (path, recognised by its header line).
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: add_dti_track }
+            params:
+              type: object
+              properties:
+                source: { type: string }
+                path:   { type: string }
+
+    RequestCommand_set_dti_options:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_dti_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:         { type: string }
+                colour_scale: { type: string, enum: [sequential, diverging], description: "color_scale is read too." }
+                value_min:    { type: number, minimum: 0, maximum: 20 }
+                value_max:    { type: number, minimum: 0, maximum: 20 }
+                labels:       { type: boolean }
+
+    RequestCommand_dti_lookup:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: dti_lookup }
+            params:
+              type: object
+              required: [name, transcript]
+              properties:
+                name:       { type: string }
+                transcript: { type: string, description: "A transcript ID, with or without its version." }
 
     RequestCommand_list_analyses:
       allOf:
@@ -953,8 +1423,15 @@ components:
                 tracks:
                   type: array
                   items: { type: string }
+                  description: Default, the visible tracks.
 
     RequestCommand_run_analysis:
+      description: |
+        Starts one of the 49 analyses on a background thread and answers
+        at once (`status` running); poll `analysis_status`. An unknown name
+        answers 400 `UNKNOWN_ANALYSIS`; another analysis still running, 409
+        `INVALID_STATE`. Every result file gets a manifest beside it
+        (`<result>.manifest.json`).
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -966,17 +1443,25 @@ components:
               properties:
                 type:
                   type: string
-                  description: "Analysis name — see list_analyses for the full catalogue."
+                  description: "Analysis name (e.g. GCContent): see list_analyses for the full catalogue."
                 tracks:
                   type: array
                   items: { type: string }
+                  description: Input tracks in slot order (A, then B); default, the visible tracks fitted to the analysis's inputs.
                 params:
                   type: object
                   description: |
-                    Analysis-specific parameters, e.g.
-                    `{"window_size": "100"}`. Optional `scope` field:
-                    `"viewport"` (default), `"chromosome"`, `"group"`, `"all"`.
-                output_path: { type: string }
+                    Analysis-specific parameters, e.g. `{"window_size": "100"}`.
+                    `scope`: `viewport` (the default unless Settings says
+                    otherwise), `chromosome` (`transcript` is the same scope on a
+                    transcriptome reference) or `genome` (`group` and `all` are
+                    read as `genome`). `chromosome` with `start` and `end`
+                    (0-based, end exclusive) names a region and wins over the
+                    scope. `hash_inputs` true checksums every input file
+                    whatever its size. A parameter that does not parse or is out
+                    of range fails the analysis and names itself.
+                output_path: { type: string, description: "A relative path is under the results directory." }
+                results_dir: { type: string, description: "The directory for this run's result files and manifest; a relative one is under the results directory." }
 
     RequestCommand_analysis_status:
       allOf:
@@ -994,7 +1479,29 @@ components:
             command: { type: string, const: cancel_analysis }
             params:  { type: object }
 
+    RequestCommand_read_result_rows:
+      description: |
+        The rows of a result file, read from its start to the end of the
+        page, never whole. It reads only a file an analysis wrote (its
+        output, its manifest, a file its summary names), in this run or in
+        the run that saved a session it reopens; any other path, a file in
+        the results directory included, is refused with 403 `NOT_A_RESULT`
+        before it is read.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: read_result_rows }
+            params:
+              type: object
+              required: [path]
+              properties:
+                path:   { type: string, description: "The result file; a relative path is under the results directory." }
+                offset: { type: integer, minimum: 0, default: 0, description: "The first row to give, counted from 0." }
+                limit:  { type: integer, minimum: 1, maximum: 1000, default: 100 }
+
     RequestCommand_start_recording:
+      description: Each key not given takes Settings > Output > Capture's value, and nothing is written back to Settings. A value out of range is refused by name. Without ffmpeg, 500 DEPENDENCY_MISSING.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1003,11 +1510,11 @@ components:
             params:
               type: object
               properties:
-                format:       { type: string, enum: [mp4, webm, gif], default: mp4 }
-                fps:          { type: integer, minimum: 1, maximum: 120, default: 30 }
-                capture_mode: { type: string, enum: [timer, render], default: timer }
-                quality:      { type: integer, minimum: 0, maximum: 51, default: 23 }
-                output_path:  { type: string }
+                format:       { type: string, enum: [mp4, webm, gif] }
+                fps:          { type: integer, minimum: 1, maximum: 240 }
+                capture_mode: { type: string, enum: [timer, render] }
+                quality:      { type: integer, minimum: 0, maximum: 51, description: "The CRF: 0 lossless, 23 the usual default, 51 the lowest." }
+                output_path:  { type: string, description: "The directory for the video file." }
 
     RequestCommand_stop_recording:
       allOf:
@@ -1025,12 +1532,77 @@ components:
             command: { type: string, const: recording_status }
             params:  { type: object }
 
+    RequestCommand_save_session:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: save_session }
+            params:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string, description: "The .vxs file to write (.vxs is appended when missing; a relative path is under the Sessions directory)." }
+
+    RequestCommand_load_session:
+      description: |
+        Restores a session without a dialog: a missing input file is
+        skipped and named in `inputs_missing`. The files load in the
+        background (`loading_status`, `/state`).
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: load_session }
+            params:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string, description: "The .vxs file (a relative path is under the Sessions directory)." }
+
+    RequestCommand_shutdown:
+      description: The viewer answers, then closes its window (or, without a window, quits).
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: shutdown }
+            params:  { type: object }
+
+    RequestCommand_load_demo:
+      description: |
+        Opens a demo case: downloaded once into the cache from the
+        `demo-data-v1` release (or the address set in Settings > Paths or
+        `VX_DEMO_BASE_URL`), checked, loaded, and shown at its figure's
+        view. Answers at once; poll `loading_status`. An unknown case is 400
+        `INVALID_PARAMS`; another case still being opened, 409 `BUSY`; an
+        address that is not http or https, 409 `INVALID_STATE`.
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: load_demo }
+            params:
+              type: object
+              required: [case]
+              properties:
+                case:     { type: [string, integer], description: "1, 2, 3a, 3b or 4." }
+                navigate: { type: boolean, default: true, description: "Go to the figure's view once the files are loaded." }
+
+    RequestCommand_demo_status:
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: demo_status }
+            params:  { type: object }
+
     # ── Selected response schemas (illustrative; many more exist) ──
     Response_navigate:
       type: object
       properties:
         success:    { type: boolean }
-        chromosome: { type: string }
+        chromosome: { type: string, description: "As the loaded reference names it." }
         start:      { type: integer }
         end:        { type: integer }
 
@@ -1041,6 +1613,34 @@ components:
         viewStart:  { type: integer }
         viewEnd:    { type: integer }
         viewLength: { type: integer }
+
+    Response_next_coverage_region:
+      type: object
+      properties:
+        success:     { type: boolean }
+        moved:       { type: boolean }
+        direction:   { type: string, enum: [next, prev] }
+        chromosome:  { type: string }
+        viewStart:   { type: integer }
+        viewEnd:     { type: integer }
+        targetStart: { type: integer, description: "When the view moved." }
+        targetEnd:   { type: integer, description: "When the view moved." }
+        track:       { type: string, description: "The track scanned." }
+        trackType:   { type: string }
+        scanned:     { type: boolean, description: "False when no track has coverage to scan." }
+        scanSeconds: { type: number }
+        cancelled:   { type: boolean }
+        cancelledBy: { type: string, enum: [api, panel] }
+        note:        { type: string }
+
+    Response_cancel_coverage_scan:
+      type: object
+      properties:
+        success:    { type: boolean }
+        message:    { type: string }
+        cancelled:  { type: boolean }
+        track:      { type: string }
+        chromosome: { type: string }
 
     Response_get_sequence:
       type: object
@@ -1074,6 +1674,30 @@ components:
                 type: array
                 items:
                   type: object
+                  properties:
+                    transcriptId:   { type: string }
+                    transcriptName: { type: string }
+                    start:          { type: integer }
+                    end:            { type: integer }
+                    exonCount:      { type: integer }
+                    exons:
+                      type: array
+                      items: { $ref: "#/components/schemas/Span" }
+                    translonRegionCount: { type: integer }
+                    translonRegions:
+                      type: array
+                      description: The translated region (the annotation's CDS).
+                      items: { $ref: "#/components/schemas/Span" }
+                    utrCount: { type: integer }
+                    utr:
+                      type: array
+                      items: { $ref: "#/components/schemas/Span" }
+
+    Span:
+      type: object
+      properties:
+        start: { type: integer }
+        end:   { type: integer }
 
     Response_search_genes:
       type: object
@@ -1090,6 +1714,45 @@ components:
               chromosome: { type: string }
               start:      { type: integer }
               end:        { type: integer }
+
+    Response_click_element:
+      type: object
+      properties:
+        hit:              { type: boolean, description: "Whether an element was under the point." }
+        selectedElements: { type: integer }
+        popupVisible:     { type: boolean }
+        popupText:        { type: string, description: "When the popup is open." }
+        rightClick:       { type: string, enum: [inform, menu], description: "With button 3: inform (the popup) or menu (the mouse would open the context menu)." }
+        selected:
+          type: object
+          description: When exactly one element is selected.
+          properties:
+            trackName:    { type: string }
+            trackType:    { type: string }
+            elementIndex: { type: integer }
+            subIndex:     { type: integer, description: "A modification call's index, -1 for the element itself." }
+
+    Response_export_region:
+      type: object
+      properties:
+        success:    { type: boolean }
+        path:       { type: string }
+        format:     { type: string, enum: [fasta, gff] }
+        chromosome: { type: string }
+        start:      { type: integer }
+        end:        { type: integer }
+
+    Response_export_image:
+      type: object
+      properties:
+        success:     { type: boolean }
+        path:        { type: string }
+        format:      { type: string, enum: [png, jpeg, tiff] }
+        width:       { type: integer }
+        height:      { type: integer }
+        scale:       { type: number }
+        clamped:     { type: boolean, description: "The scale was lowered to what the GPU can render." }
+        transparent: { type: boolean, description: "The file has an alpha channel." }
 
     Response_list_chromosomes:
       type: object
@@ -1115,7 +1778,7 @@ components:
             properties:
               index:  { type: integer }
               label:  { type: string }
-              region: { type: string, description: "'chr:start-end' format." }
+              region: { type: string, description: "'chr:start-end' format (0-based start, end exclusive)." }
 
     Response_loading_status:
       type: object
@@ -1124,9 +1787,20 @@ components:
         progress:     { type: number, minimum: 0, maximum: 1 }
         stage:        { type: string }
         done:         { type: boolean }
+        finalizing:   { type: boolean, description: "A finished load whose track is not yet in the viewer." }
+        queued:       { type: integer, description: "Loads waiting behind this one." }
         hasError:     { type: boolean }
+        cancelled:    { type: boolean, description: "The load that ended last was cancelled (hasError is true too)." }
         errorMessage: { type: string }
         filename:     { type: string }
+        demo:         { type: object, description: "While or after a demo case is opened: the job (case, phase, bytes, files, error)." }
+
+    Response_run_analysis:
+      type: object
+      properties:
+        status:      { type: string, enum: [running] }
+        analysis:    { type: string }
+        output_path: { type: string, description: "When output_path was given, as resolved." }
 
     Response_analysis_status:
       type: object
@@ -1134,14 +1808,15 @@ components:
         running:    { type: boolean }
         stage:      { type: string }
         progress:   { type: number, minimum: 0, maximum: 1 }
-        complete:   { type: boolean }
+        complete:   { type: boolean, description: "True only once the analysis has ended, with running false and its result." }
         cancelled:  { type: boolean }
         elapsed_seconds: { type: number }
         estimated_remaining_seconds: { type: number }
         success:        { type: boolean }
         error:          { type: string }
         output_path:    { type: string }
-        summary:        { type: object }
+        summary:        { type: object, description: "The analysis's counts; summary.manifest names the manifest." }
+        parameters:     { type: object, description: "Every parameter the analysis read, as applied." }
         scope_applied:  { type: string }
         region_applied:
           type: object
@@ -1149,6 +1824,30 @@ components:
             chromosome: { type: string }
             start:      { type: integer }
             end:        { type: integer }
+
+    Response_read_result_rows:
+      type: object
+      properties:
+        path:        { type: string }
+        header:
+          type: array
+          items: { type: string }
+          description: A table's column names, a VCF's #CHROM names; empty for a BED or bedGraph.
+        rows:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+          description: Each line split on tabs; lines starting with '#', blank lines and a track line are not rows.
+        offset:      { type: integer }
+        returned:    { type: integer }
+        next_offset: { type: integer, description: "Only when more rows follow." }
+        bytes:       { type: integer, description: "The file's size." }
+        bytes_read:  { type: integer }
+        cut_rows:
+          type: array
+          items: { type: integer }
+          description: The rows longer than 64 KiB, given cut; only when there are any.
 
     Response_recording_status:
       type: object
@@ -1158,12 +1857,81 @@ components:
         elapsed:          { type: string, description: "MM:SS while recording." }
         frames:           { type: integer }
 
-    Response_export_region:
+    Response_save_session:
       type: object
       properties:
-        success:    { type: boolean }
-        path:       { type: string }
-        format:     { type: string, enum: [fasta, gff] }
-        chromosome: { type: string }
-        start:      { type: integer }
-        end:        { type: integer }
+        success: { type: boolean }
+        message: { type: string }
+        path:    { type: string }
+
+    Response_load_session:
+      type: object
+      properties:
+        success:         { type: boolean }
+        message:         { type: string }
+        results_reused:
+          type: array
+          items: { type: string }
+        results_missing:
+          type: array
+          items: { type: string }
+        inputs_missing:
+          type: array
+          items:
+            type: object
+            properties:
+              path:  { type: string }
+              group: { type: string }
+              track: { type: string }
+        restore_skipped:
+          type: array
+          items: { $ref: "#/components/schemas/RestoreSkipped" }
+        status: { type: string }
+
+    Response_load_demo:
+      type: object
+      properties:
+        success:        { type: boolean }
+        message:        { type: string }
+        case:           { type: string }
+        title:          { type: string }
+        zip:            { type: string }
+        url:            { type: string }
+        zip_bytes:      { type: integer }
+        unpacked_bytes: { type: integer }
+        state:          { type: string, description: "The case's state in the cache." }
+        dir:            { type: string }
+        load_order:
+          type: array
+          items: { type: string }
+        view:           { type: string }
+        navigate:       { type: boolean }
+
+    Response_demo_status:
+      type: object
+      properties:
+        base_url:          { type: string }
+        base_url_source:   { type: string, enum: [environment, settings, default] }
+        base_url_problem:  { type: string }
+        cache_dir:         { type: string }
+        cases:
+          type: array
+          items:
+            type: object
+            properties:
+              case:           { type: string }
+              title:          { type: string }
+              summary:        { type: string }
+              study:          { type: string }
+              quick_start:    { type: boolean }
+              zip:            { type: string }
+              zip_bytes:      { type: integer }
+              unpacked_bytes: { type: integer }
+              state:          { type: string }
+              view:           { type: string }
+              load_order:
+                type: array
+                items: { type: string }
+        job:
+          type: [object, "null"]
+          description: The last demo job, or null.

@@ -8,13 +8,13 @@ directly.
 
 ## 1. Prerequisites
 
-- VX Genome Viewer installed and runnable (see the
-  [main README](../README.md) → "Get the binaries").
+- VX installed and runnable (see the
+  [main README](../README.md) → "Quick install").
 - Python 3.10 or newer on `PATH`.
-- An MCP-capable client. Tested with:
+- An MCP-capable client, such as:
   - Claude Code (CLI)
   - Claude Desktop (GUI)
-- (Optional) A virtualenv tool — `venv` is fine, `uv` works too.
+- (Optional) A virtualenv tool: `venv` is fine, `uv` works too.
 
 ---
 
@@ -31,29 +31,34 @@ pip install -r requirements.txt
 ```
 
 Note the absolute path of `vx_mcp_server.py` and the absolute path
-of the `python` binary inside `.venv/bin/`. You'll need both for
-the client config.
+of the `python` binary inside `.venv/bin/` (`.venv\Scripts\` on
+Windows). You'll need both for the client config.
 
 ```bash
-realpath vx_mcp_server.py           # /…/Repo_upload/mcp/vx_mcp_server.py
-realpath .venv/bin/python           # /…/Repo_upload/mcp/.venv/bin/python
+realpath vx_mcp_server.py           # /…/mcp/vx_mcp_server.py
+realpath .venv/bin/python           # /…/mcp/.venv/bin/python
 ```
 
 ---
 
 ## 3a. Wire up Claude Code
 
-Claude Code reads MCP servers from `~/.config/claude/mcp.json`
-(Linux/macOS) or `%APPDATA%\Claude\mcp.json` (Windows). Add a
-block like:
+Register the server with Claude Code's `claude mcp add` command
+(add `--scope user` to have it in every project):
+
+```bash
+claude mcp add vx -- /absolute/path/to/mcp/.venv/bin/python /absolute/path/to/mcp/vx_mcp_server.py
+```
+
+Or, for one project, put a `.mcp.json` file at the project's root:
 
 ```json
 {
   "mcpServers": {
     "vx": {
-      "command": "/absolute/path/to/Repo_upload/mcp/.venv/bin/python",
+      "command": "/absolute/path/to/mcp/.venv/bin/python",
       "args": [
-        "/absolute/path/to/Repo_upload/mcp/vx_mcp_server.py"
+        "/absolute/path/to/mcp/vx_mcp_server.py"
       ]
     }
   }
@@ -65,10 +70,11 @@ list (e.g. `mcp__vx__vx_ping`).
 
 ## 3b. Wire up Claude Desktop
 
-Same idea, different file path. On macOS:
+Same idea, different file path:
 
 ```
-~/Library/Application Support/Claude/claude_desktop_config.json
+~/Library/Application Support/Claude/claude_desktop_config.json     (macOS)
+%APPDATA%\Claude\claude_desktop_config.json                         (Windows)
 ```
 
 Edit the `mcpServers` block to add the `vx` server with the same
@@ -83,7 +89,7 @@ Launch VX. Then ask the agent:
 > Ping VX.
 
 You should see the agent call `vx_ping` and receive
-`{"status":"ok","app":"VX Genome Viewer","api_version":2}`. If you
+`{"status":"ok","app":"VX","api_version":2}`. If you
 see a connection error, check that VX is actually running
 (`curl -s http://127.0.0.1:9876/ping` should work from the same
 machine).
@@ -92,21 +98,28 @@ machine).
 
 ## 5. Common issues
 
-- **VX not on port 9876.** Other VX instances on the same machine
-  will fail to bind the API socket and start without it. Close all
-  but one VX instance.
+- **VX not on port 9876.** VX's port is set in Settings > MCP /
+  API, or with `--port N`. Give the server that address in its
+  environment, in the client config:
+  `"env": {"VX_API_BASE": "http://127.0.0.1:9877"}` beside
+  `"command"` and `"args"`.
+- **A second VX.** Starting VX while it runs brings the running
+  one forward. To run two, start the second with
+  `VX_NEW_INSTANCE=1` and its own `--port`, and point a second MCP
+  server entry at it with `VX_API_BASE`.
 - **Python can't find `fastmcp`.** Ensure your client is launching
   the venv's `python`, not the system one. Use absolute paths in
   the MCP JSON config.
-- **Tools appear but every call returns "connection refused".**
-  VX must be running BEFORE the client invokes a tool. Many MCP
-  clients start the server lazily; the first call will fail if VX
-  is not yet up.
+- **Tools appear but every call fails with "Cannot connect to
+  VX".** VX must be running BEFORE the client invokes a tool. Many
+  MCP clients start the server lazily; the first call will fail if
+  VX is not yet up.
 
 ---
 
 ## 6. Uninstall
 
-Remove the `vx` entry from your client's MCP config and (if you no
-longer need it) delete the `.venv` folder. The MCP server has no
-other footprint on the system.
+Remove the `vx` entry from your client's MCP config (in Claude
+Code, `claude mcp remove vx`) and, if you no longer need it,
+delete the `.venv` folder. The MCP server has no other footprint
+on the system.

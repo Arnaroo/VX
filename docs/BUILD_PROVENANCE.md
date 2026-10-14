@@ -1,6 +1,6 @@
 # Build provenance
 
-This document records how each pre-compiled VX Genome Viewer binary
+This document records how each pre-compiled VX binary
 attached to a GitHub release is produced. It exists so a downstream
 auditor can answer three questions without access to our build hosts:
 
@@ -11,12 +11,12 @@ auditor can answer three questions without access to our build hosts:
    tests)?**
 
 It is a distilled, public-facing summary of the internal build
-notes — host-specific paths and provisioning credentials have been
-stripped.
+notes: host-specific paths and provisioning credentials have been
+stripped. It describes VX 0.10.0 ("Banksia").
 
 The D source code that produced these binaries is **proprietary and
 confidential** and is not distributed through this repository
-(see the per-folder license matrix in the top-level
+(see the per-folder licence matrix in the top-level
 [`README.md`](../README.md)).
 
 ---
@@ -24,201 +24,204 @@ confidential** and is not distributed through this repository
 ## Common ground
 
 All platforms share the same source tree, the same DUB package
-description (`dub.json`), and the LDC LLVM-based D compiler.
-Release builds always set the following flags:
+description (`dub.json`) and the LDC compiler (the LLVM-based D
+compiler). The D dependencies are GtkD 3.10.0 (its `gtk-d:gtkd`
+subpackage alone, which drops the unused peas, vte, gstreamer and
+sv subpackages), bindbc-opengl 1.0.5 and bindbc-loader 1.0.3. A
+small C file that calls FreeType is compiled with the platform's C
+compiler (gcc on Linux, clang on macOS, MSVC's `cl` on Windows).
+VX's build changes GtkD in one place; the change is published in
+[`../third_party/GTKD.md`](../third_party/GTKD.md).
 
-| Flag                                | Effect                                            |
-|---|---|
-| `-O3`                               | Highest optimisation level                        |
-| `--fp-contract=fast`                | Fuse floating-point ops where safe                |
-| `-boundscheck=off`                  | Drop array-bounds checks (release-only)           |
-| `-flto=full`                        | Full link-time optimisation                       |
-| `--link-defaultlib-shared=false`    | Static druntime + Phobos                          |
-| `-defaultlib=phobos2-ldc-lto,druntime-ldc-lto` | LTO-instrumented stdlib   |
-| `-function-sections` / `-data-sections` + `--gc-sections` | Dead-code/data elimination |
-| `--as-needed`                       | Drop unreferenced DT_NEEDED entries               |
-| `-fuse-ld=lld`                      | LLD for fast LTO link                             |
-| `releaseMode`, `optimize`, `inline`, `noBoundsCheck` (DUB)    | Release semantics |
+Every release build sets DUB's `releaseMode`, `optimize`, `inline`
+and `noBoundsCheck`, and these LDC flags:
 
-Profiles differ only in the CPU target (`-mcpu`/`-mattr`).
+| Flag | Linux | macOS | Windows | Effect |
+|---|---|---|---|---|
+| `-O3` | yes | yes | yes | Highest optimisation level |
+| `--fp-contract=fast` | yes | yes | yes | Fuse floating-point operations where possible |
+| `-boundscheck=off` | yes | yes | yes | No array bounds checks |
+| `-mcpu=` | `x86-64-v3` | `apple-m1` | `x86-64-v3` | The processor the code is built for |
+| `-flto=full` with `-defaultlib=phobos2-ldc-lto,druntime-ldc-lto` | yes | no | yes | Full link-time optimisation, the D runtime and Phobos included |
+| `--link-defaultlib-shared=false` | yes | no (the static libraries are force-loaded instead, see below) | yes | The D runtime and Phobos linked statically |
+| `-function-sections`, `-data-sections` | yes | no | yes | One section a function or datum, for the linker to drop what is unused |
+| Linker flags | `--gc-sections`, `--as-needed`, `-fuse-ld=lld` | `-dead_strip` | `/OPT:REF`, `/OPT:ICF` | Dead-code elimination |
 
 ---
 
 ## Linux
 
-| Item                | Value                                                              |
+| Item | Value |
 |---|---|
-| Host triple         | `x86_64-pc-linux-gnu`                                              |
-| Toolchain           | LDC 1.42+ with LLVM 19 (Manjaro/Arch packages)                     |
-| Linker              | `lld` (via `-fuse-ld=lld`)                                         |
-| Runtime libc        | glibc on the build host (Linux release binaries dynamic-link libc) |
-| GTK linkage         | dynamic — system GTK 3.24 expected at runtime                      |
-| gtk-d dependency    | narrowed to `gtk-d:gtkd` subpackage (drops peas/vte/gstreamer/sv)  |
+| Build host | x86-64, an Arch-based distribution (Manjaro) with glibc 2.44 |
+| Toolchain | LDC 1.43.0 (D front end 2.113.0, LLVM 22.1.8), DUB 1.42.0 |
+| Linker | LLD 22.1.8 (`-fuse-ld=lld`) |
+| Build type | `release-aggressive` (`-mcpu=x86-64-v3`) |
+| Shared libraries linked | exactly `ld-linux-x86-64.so.2`, `libc.so.6`, `libm.so.6`, `libgcc_s.so.1`, `libGL.so.1` and `libfreetype.so.6`; the release build checks the set and fails if it differs |
+| Loaded at run time | GTK 3 and the libraries GtkD opens by name (GLib, GObject, GIO, GDK, Pango, cairo, ATK, gdk-pixbuf and the like), and, when present, fontconfig and libcurl |
+| C library | the binary's newest glibc symbol version is `GLIBC_2.34`, so it needs glibc 2.34 or later: `fmod`, which glibc 2.38 gave a new symbol version, is bound to the version every x86-64 glibc has by a small C file of the Linux build (its result for finite arguments is the same), and the release build fails if any symbol needs a glibc newer than 2.34 |
 
-### Build profiles
-
-| Profile               | CPU target  | Intended audience              | Approx. size |
-|---|---|---|---|
-| `release-aggressive`  | `x86-64-v3` | Broad-compat x86-64 (≥ Haswell / Excavator) | ~19 MB |
-| `release-znver2`      | `znver2` + AVX2/FMA/BMI2 | AMD Zen 2 (Ryzen 3000, EPYC Rome)         | ~19 MB |
-| `release-broadwell`   | `broadwell` + AVX2/FMA/BMI2/RDSEED | Intel Broadwell and newer        | ~19 MB |
-| `release-native`      | `native` (`-mcpu=native`) | Build-host CPU only — **NEVER SHIPPED**   | ~19 MB |
-
-Build invocation (per profile `P`):
+Build, per release:
 
 ```bash
-dub build --config=linux --build=P
+dub build --config=linux --build=release-aggressive --compiler=ldc2 --force
 ```
 
-The narrowed gtk-d dependency removes a stray `libpeas-1.0.so.0`
-`dlopen()` that previously crashed the release binary on hosts that
-only have `libpeas-1.0.so.1`.
+The binary is then checked (`--version` names the version and the
+codename), its debug sections are stripped (`strip --strip-debug`;
+the symbol table is kept, so that a crash report still names
+functions), and it is staged with the font it draws with (DejaVu
+Sans Mono and its licence) and a `SHA256SUMS`. The tarball holds one
+directory, `VX-0.10.0-linux-x86_64/` (`bin/vx`, `fonts/`,
+`README-INSTALL.txt`, `README.md`, `LICENSE.txt`, `SHA256SUMS`),
+and is made reproducibly from the staged files: names sorted, owner
+and group 0, every time set to the release date, gzip without a
+name or a time.
+
+`dub.json` also has the build types `release-znver2` (AMD Zen 2),
+`release-broadwell` (Intel Broadwell), tuned builds of the same
+source, and `release-native` (the build host's own processor,
+never shipped). 0.10.0 publishes the `x86-64-v3` build alone.
 
 ### Bundled libraries (Linux)
 
-None. The Linux binary expects a baseline GTK 3.24 + GLib + Cairo +
-Pango + freetype + libepoxy install on the host. Distributions ship
-these as part of the desktop. The release tarball does include the
-binary's launch wrapper plus `genome-viewer.cfg` and the help
-README.
+None. GTK 3, FreeType and the OpenGL driver come from the
+distribution (see the main README's install notes). The tarball
+holds VX, its font and its documents.
 
 ---
 
 ## macOS
 
-| Item                | Value                                                  |
+| Item | Value |
 |---|---|
-| Host triple         | `arm64-apple-macos13.0`                                |
-| Toolchain           | LDC **1.41.0** (pinned)                                |
-| Linker              | Apple `ld`                                             |
-| Runtime libc        | libSystem on macOS 13+                                 |
-| GTK linkage         | bundled via `dylibbundler` (~30 dylibs)                |
-| Bundle layout       | relocatable `vx-macos/{bin,lib}` + `VX.app` bundle      |
+| Build host | an Apple silicon Mac running macOS 26 |
+| Toolchain | LDC 1.41.0 |
+| Linker | Apple's `ld` |
+| Build type | `release-macos`: `-O3 -mcpu=apple-m1 --fp-contract=fast -boundscheck=off -dead_strip`, no LTO |
+| D runtime | LDC's static `libdruntime-ldc.a` and `libphobos2-ldc.a`, force-loaded (`-force_load`) |
+| Frameworks | OpenGL, CoreFoundation, CoreText |
+| GTK | Homebrew's GTK 3.24.52 and the libraries it uses (Homebrew's builds for macOS 26), bundled |
+| Lowest macOS | 26.0: the bundle's `LSMinimumSystemVersion` is the highest minimum of the binary and of every library it carries |
 
-### Build pipeline (per `scripts/package_macos.sh`)
+Packaging:
 
-1. `dub build --config=linux` (note: `linux` config name is reused
-   on macOS; only the platform-conditional source paths differ).
-2. Copy `genome-viewer` into `vx-macos/bin/`.
-3. Seed `vx-macos/lib/` with the GTK dylib roster that `gtk-d`
-   resolves via `dlopen()` (15 dylibs:
-   `libgtk-3.0.dylib`, `libgdk-3.0.dylib`, `libgobject-2.0.dylib`,
-   `libgio-2.0.dylib`, `libglib-2.0.dylib`, `libgmodule-2.0.dylib`,
-   `libgthread-2.0.dylib`, `libatk-1.0.dylib`,
-   `libgdk_pixbuf-2.0.dylib`, `libcairo.dylib`,
-   `libpango-1.0.dylib`, `libpangocairo-1.0.dylib`,
-   `libharfbuzz.dylib`, `libfribidi.dylib`, `libepoxy.dylib`).
-4. `dylibbundler -of -b -d lib/ -p @executable_path/../lib/`
-   walks the transitive dependency graph from Homebrew
-   (`/opt/homebrew`) and rewrites install names to be
-   bundle-relative.
-5. Build the native Mach-O launcher
-   (`scripts/applauncher.c`) targeting `-arch arm64`,
-   `-mmacosx-version-min=13.0`. The launcher sets
-   `GDK_BACKEND=quartz,*` and `exec()`s `genome-viewer`.
-   (A shell-script launcher is rejected by macOS Tahoe 15+
-   Gatekeeper with error `-10669`.)
-6. Assemble `VX.app/Contents/{MacOS,Resources}/`, write the
-   `Info.plist` (bundle id `org.biocodecs.vx`, version `0.9.0`,
-   `LSMinimumSystemVersion=13.0`).
-7. Ad-hoc sign: `codesign --force --deep --sign - VX.app`.
-8. Package the `.dmg`: `hdiutil create -volname … -format UDZO
-   -fs HFS+`.
-
-`scripts/package_macos.sh` also stages `LICENSE.txt`
-(the CC-BY-NC-ND-4.0 text) into the bundle root, the `.app`'s
-`Contents/Resources/`, and the DMG window.
+1. `dub build --config=macos --compiler=<LDC 1.41.0's ldc2> --build=release-macos`.
+2. The GTK libraries GtkD opens by name, and every library they
+   need, are copied from Homebrew with `dylibbundler`, which gives
+   them `@rpath/` install names; the binary's run paths are
+   `@executable_path/../Resources/lib` (VX.app) and
+   `@executable_path/../lib` (the folder `vx-macos`). The packaging
+   stops if any library refers to a file outside the bundle or the
+   system.
+3. GTK's data is added: the GSettings schemas (compiled), the
+   hicolor and Adwaita icon themes, empty caches for gdk-pixbuf's
+   loaders and GTK's input methods (the built-in ones are used), a
+   fontconfig configuration, and the font with its licence.
+4. `VX.app` is assembled: the binary is `Contents/MacOS/vx`, the
+   rest under `Contents/Resources/`, with `Info.plist` (bundle id
+   `org.biocodecs.vx`, version 0.10.0), `LICENSE.txt` and
+   `THIRD_PARTY_LICENSES.txt`.
+5. Ad-hoc signing: `codesign --force --deep --sign - VX.app`; the
+   packaging stops unless `codesign --verify --deep --strict`
+   accepts the bundle.
+6. The disk image: `hdiutil create -format UDZO -fs HFS+`, holding
+   `VX.app`, a link to Applications, `README.txt`, `LICENSE.txt`
+   and `THIRD_PARTY_LICENSES.txt`; then its `.sha256`.
 
 ### Bundled libraries (macOS)
 
-| Source                                  | Count |
+| Source | Count |
 |---|---|
-| Homebrew (`/opt/homebrew`) — GTK 3, GLib, Cairo, Pango, etc. | ~30 dylibs |
-| Static druntime + Phobos                | linked into the binary itself |
+| Homebrew (`/opt/homebrew`): GTK 3, GLib, cairo, Pango, HarfBuzz, FreeType, fontconfig, gdk-pixbuf and what they need | 35 libraries |
+| Static druntime + Phobos | linked into the binary itself |
 
-Total `.app` bundle size: ~45 MB (binary + dylibs + icons).
+`THIRD_PARTY_LICENSES.txt` names each Homebrew formula shipped,
+with its version, licence, home page and source, followed by the
+licence texts.
 
-Gatekeeper note: the bundle is ad-hoc signed only — first launch
-requires right-click → Open (one-time confirmation). No Developer
-ID signing or notarisation is performed.
+Gatekeeper note: the bundle is ad-hoc signed only, with no
+Developer ID signing and no notarisation. macOS refuses its first
+start; System Settings > Privacy & Security > *Open Anyway* lets
+it through, after which it opens at once.
 
 ---
 
 ## Windows
 
-| Item                | Value                                                  |
+| Item | Value |
 |---|---|
-| Host triple         | `x86_64-pc-windows-msvc`                               |
-| Toolchain           | LDC matching the Linux pin, MSVC linker (VS 2022 Build Tools) |
-| C runtime           | MSVC UCRT                                              |
-| GTK linkage         | bundled via MSYS2/MINGW64 DLLs (~50 DLLs)              |
+| Build host | Windows x86-64 |
+| Toolchain | LDC 1.43.0 (its `windows-multilib` release) |
+| Linker | the MSVC linker of the Visual Studio Build Tools 18.4 |
+| Target | `x86_64-windows-msvc` |
+| Build type | `release-windows`: `-O3 -mcpu=x86-64-v3 --fp-contract=fast -boundscheck=off -flto=full`, the LTO druntime and Phobos linked statically, `-function-sections -data-sections`, `/OPT:REF /OPT:ICF` |
+| Configuration | both of `dub.json`'s: `windows-gui` (linked with `/SUBSYSTEM:WINDOWS`, no terminal window) as `vx.exe`, and `windows` (a console program, for the command line) as `vx-console.exe` |
+| GTK | MSYS2's MINGW64 GTK 3.24.51 and the DLLs it needs |
+| Other libraries | libcurl 8.21 from MSYS2 with OpenSSL 3; libtiff 4.7.1 built with MSVC without JBIG and without external codecs, so that no GPL library ships |
 
-### Build pipeline
+Packaging:
 
-1. Run `scripts/build_windows.bat` from a VS 2022 *x64 Native
-   Tools* command prompt — produces `bin/genome-viewer.exe`
-   linked against the MSVC C runtime.
-2. From an MSYS2 MINGW64 shell, run
-   `scripts/package-windows.sh [--zip] [--installer]`. This:
-   - copies the exe into `dist/vx-windows/`;
-   - resolves every transitive MinGW64 DLL dependency by walking
-     `ldd` and seeding the resolver with the GTK runtime DLLs
-     that `gtk-d` `LoadLibrary`s at runtime (so they would
-     otherwise be invisible to `ldd` on the exe alone);
-   - copies all GdkPixbuf image-loader DLLs and rewrites
-     `loaders.cache` to bundle-relative paths;
-   - copies the GTK *Default* and *MS-Windows* themes plus the
-     *Adwaita* and *hicolor* icon themes;
-   - compiles the GLib schemas with `glib-compile-schemas`;
-   - stages `LICENSE.txt` (CC-BY-NC-ND-4.0) at the bundle root.
-3. With `--zip`, produces
-   `dist/vx-{VERSION}-windows-x86_64.zip`.
-4. With `--installer` and Inno Setup 6 (`iscc.exe`) on PATH,
-   produces
-   `dist/VX-{VERSION}-windows-x86_64-setup.exe` per
-   `installer/vx-installer.iss`.
+1. The DLLs: those `vx.exe` imports, the GTK libraries GtkD loads
+   by name, libcurl, and the PNG, JPEG and SVG loaders of
+   gdk-pixbuf, each with the DLLs it imports (read with MSVC's
+   `dumpbin`). Every DLL must be on a fixed list of 53, each
+   added only once its purpose and licence are known, or the
+   packaging stops.
+2. GTK's data: the loaders' cache cut to the three loaders, GTK's
+   Default theme (its key bindings), the Adwaita and hicolor icon
+   themes, the GSettings schemas (compiled), fontconfig's
+   configuration, and the font with its licence.
+3. `LICENSE.txt` and `THIRD_PARTY_LICENSES.txt` (each MSYS2
+   package shipped, with its version, licence, home page and the
+   source archive of the exact build, followed by the licence
+   texts).
+4. The ZIP, `VX-0.10.0-windows-x86_64.zip`, holding one folder,
+   `vx-windows/`, and its `.sha256`. No installer is published.
 
 ### Bundled libraries (Windows)
 
-| Source                                            | Count    |
+| Source | Count |
 |---|---|
-| MSYS2 MINGW64 (`/mingw64/bin/*.dll`) — GTK 3, GLib, Cairo, Pango, libepoxy, libpng, libjpeg, librsvg, harfbuzz, freetype, etc. | ~50 DLLs |
-| GdkPixbuf image loaders (`lib/gdk-pixbuf-2.0/`)   | included |
-| GTK themes (`share/themes/{Default,MS-Windows}`)  | included |
-| Icon themes (`share/icons/{Adwaita,hicolor}`)     | included |
-| GLib schemas (`share/glib-2.0/schemas/`)          | compiled |
-
-Inno Setup compresses the bundle with `lzma2/ultra64` and produces
-a per-user installer (no UAC prompt). Total installer size after
-compression: ~20-25 MB.
+| MSYS2 MINGW64: GTK 3, GLib, cairo, Pango, HarfBuzz, FreeType, fontconfig, gdk-pixbuf, libepoxy, libpng, libjpeg, librsvg, libcurl, OpenSSL and what they need; libtiff built for VX | 53 DLLs |
+| gdk-pixbuf image loaders (`lib/gdk-pixbuf-2.0/`) | PNG, JPEG, SVG |
+| GTK theme (`share/themes/Default`) | key bindings |
+| Icon themes (`share/icons/{Adwaita,hicolor}`) | included |
+| GSettings schemas (`share/glib-2.0/schemas/`) | compiled |
+| fontconfig configuration (`etc/fonts/`) | included |
 
 ---
 
 ## Verification (downstream)
 
-For every release asset, the GitHub release page exposes:
+For every release asset, the GitHub release page exposes the asset
+and its `.sha256`:
 
-- `vx-{VERSION}-linux-x86_64.tar.gz` + `.sha256`
+- `VX-{VERSION}-linux-x86_64.tar.gz` + `.sha256`
 - `VX-{VERSION}-macos-arm64.dmg` + `.sha256`
-- `vx-{VERSION}-windows-x86_64.zip` + `.sha256`
-- `VX-{VERSION}-windows-x86_64-setup.exe` + `.sha256`
+- `VX-{VERSION}-windows-x86_64.zip` + `.sha256`
 
 Recommended downstream checks:
 
 1. **Hash verification.** Compute `sha256sum <asset>` and compare
    against the matching `.sha256` file. Reject the binary on
-   mismatch.
-2. **HTTP-API smoke test.** Launch the binary; from another
-   terminal run `curl -s http://127.0.0.1:9876/ping`. A response
-   of `{"pong": true, …}` indicates the embedded HTTP server has
-   started, which exercises the full process bring-up (DUB
-   linkage, runtime init, GTK initialisation, OpenGL probe).
-3. **Bundle-license presence.** Each release artefact embeds
-   `LICENSE.txt` (CC-BY-NC-ND-4.0) at its root (or under
-   `Contents/Resources/` for the `.app`).
-4. **Bundle-content audit.** For the Windows ZIP and macOS DMG,
-   `unzip -l` / `hdiutil attach … && ls -R` should match the
-   roster declared above (±a few patch-level DLL bumps).
+   mismatch. After unpacking the Linux tarball,
+   `sha256sum -c SHA256SUMS` in its directory checks every file.
+2. **Version.** `vx --version` prints the version, the codename
+   and the build date, and exits.
+3. **HTTP-API smoke test.** Launch the binary; from another
+   terminal run `curl -s http://127.0.0.1:9876/ping`. The answer
+   `{"status":"ok","app":"VX","api_version":2}` shows that the
+   program started and its API server listens.
+4. **Bundle-licence presence.** Each package holds `LICENSE.txt`
+   (CC-BY-NC-ND-4.0): at the root of the Linux directory and of
+   `vx-windows/`, in the disk image and in `VX.app`'s
+   `Contents/Resources/`. The macOS and Windows packages hold
+   `THIRD_PARTY_LICENSES.txt` beside it.
+5. **Bundle-content audit.** `tar -tzf`, `unzip -l` or
+   `hdiutil attach … && ls -R` should match the lists above; on
+   Linux, `readelf -d bin/vx | grep NEEDED` lists the six libraries
+   above.
 
 Any deviation between an asset on the release page and this
 provenance document should be reported via the public issues
@@ -229,12 +232,14 @@ tracker.
 ## Versioning
 
 The published version on each release page (`{VERSION}` above)
-matches the `version` field in the source-tree `dub.json`. There
-is no separate build number — successive rebuilds of the same
-source revision produce binaries with the same version string.
-For development snapshots, the binary always identifies itself as
-the `version` declared at the time of build, with no extra
-`+gitsha` qualifier.
+is the version the binary reports (`vx --version`, and Settings >
+About). There is no separate build number: successive rebuilds of
+the same source revision report the same version and codename,
+each with its own build date. For development snapshots, the
+binary always identifies itself as the version declared at the
+time of build, with no extra `+gitsha` qualifier.
 
-The first public release is `0.9.0` ("Aardvark"). See
+The first public release is `0.9.0` ("Aardvark"); `0.9.0.1`
+re-published it unchanged for its archival DOI, and `0.10.0`
+("Banksia") is the next version of the program. See
 [`../CHANGELOG.md`](../CHANGELOG.md) for the release timeline.

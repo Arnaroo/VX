@@ -1,59 +1,53 @@
-# VX Genome Viewer — Pre-compiled binaries
+# VX: Pre-compiled binaries
 
-The actual binary archives are **not committed to this Git
-repository**. They are attached to each tagged release under the
-[Releases](https://github.com/Arnaroo/VX/releases) tab so the
-repo stays small and clones stay fast.
+The binary archives are **not committed to this Git repository**. They are attached to each tagged release under the
+[Releases](https://github.com/Arnaroo/VX/releases) tab, so the repository stays small.
 
-This README explains what each release asset is, how to verify
-it, and how to install/run.
+This README explains what each release asset is, how to verify it, and how to install and run it.
 
-**License:** CC-BY-NC-ND-4.0 — see
-[`../LICENSE-binaries.txt`](../LICENSE-binaries.txt).
+**Licence:** CC-BY-NC-ND-4.0, see [`../LICENSE-binaries.txt`](../LICENSE-binaries.txt). The libraries the macOS and
+Windows packages carry keep their own licences: see *What's bundled* below.
 
 ---
 
-## Asset matrix
+## Asset matrix (v0.10.0)
 
-| Platform | Filename pattern | Format | Approx. size |
+| Platform | Asset | Format | Size |
 |---|---|---|---|
-| Linux x86_64 (v3 baseline) | `VX-{version}-linux-x86_64.tar.gz` | Tarball | ~25 MB |
-| macOS arm64 | `VX-{version}-macos-arm64.dmg` | Disk image | ~45 MB |
-| Windows x86_64 (installer) | `VX-{version}-windows-x86_64-setup.exe` | Inno Setup installer | ~60 MB |
-| Windows x86_64 (portable) | `VX-{version}-windows-x86_64.zip` | ZIP | ~55 MB |
+| Linux x86_64 (x86-64-v3: Intel Haswell or AMD Excavator and later; glibc 2.34 or later) | `VX-0.10.0-linux-x86_64.tar.gz` | Tarball | 8.1 MB |
+| macOS arm64 (Apple silicon, macOS 26 or later) | `VX-0.10.0-macos-arm64.dmg` | Disk image | 22.9 MB |
+| Windows x86_64 (Windows 10 or 11; x86-64-v3, as for Linux) | `VX-0.10.0-windows-x86_64.zip` | ZIP | to follow |
 
-Each asset is accompanied by a `.sha256` companion file
-containing the SHA-256 digest.
+Each asset has a `.sha256` file beside it holding its SHA-256 digest. The demo datasets are separate assets, under the
+`demo-data-v1` release; VX downloads them itself (Open > Open Demo Dataset).
 
 ---
 
 ## Verifying the download
 
-Always verify the checksum before running an executable you
-downloaded from the internet.
+Check the digest before running a program downloaded from the internet.
 
 ### Linux
 
 ```bash
-sha256sum -c VX-X.Y.Z-linux-x86_64.tar.gz.sha256
+sha256sum -c VX-0.10.0-linux-x86_64.tar.gz.sha256
 ```
 
 ### macOS
 
 ```bash
-shasum -a 256 -c VX-X.Y.Z-macos-arm64.dmg.sha256
+shasum -a 256 -c VX-0.10.0-macos-arm64.dmg.sha256
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-Get-FileHash -Algorithm SHA256 VX-X.Y.Z-windows-x86_64-setup.exe
-# Compare against the contents of the .sha256 file.
+Get-FileHash -Algorithm SHA256 VX-0.10.0-windows-x86_64.zip
+# Compare with the digest in VX-0.10.0-windows-x86_64.zip.sha256.
 ```
 
-A mismatched hash means the download was corrupted or tampered
-with — do not run it. Re-download from the GitHub Releases page
-and try again.
+A digest that does not match means the download is damaged or was altered: do not run it. Download it again from the
+GitHub Releases page.
 
 ---
 
@@ -62,67 +56,57 @@ and try again.
 ### Linux
 
 ```bash
-tar xzf VX-X.Y.Z-linux-x86_64.tar.gz
-cd VX-X.Y.Z-linux-x86_64
-./bin/genome-viewer
+tar xzf VX-0.10.0-linux-x86_64.tar.gz
+./VX-0.10.0-linux-x86_64/bin/vx
 ```
 
-The tarball is self-contained — it bundles GTK3, Cairo, Pango,
-FreeType, fontconfig, GLib, and the rest of its non-glibc
-dependencies. You need a glibc-based distro (Arch, Debian, Fedora,
-Ubuntu, …) with a 4.x+ kernel.
+The tarball holds VX, the font it draws with and its documents (README-INSTALL.txt says what is where). VX uses the
+distribution's GTK 3, FreeType and OpenGL driver, which most desktops have; otherwise:
+
+- Debian, Ubuntu: `sudo apt install libgtk-3-0 libfreetype6 libgl1`
+- Fedora: `sudo dnf install gtk3 freetype mesa-libGL`
+- Arch: `sudo pacman -S gtk3 freetype2 libglvnd`
+
+fontconfig (the system's fonts), libcurl (downloads: the demo datasets, Retrieve Reference) and ffmpeg (video
+recording) are used when present. The build needs an x86-64-v3 processor; on an older one it stops at once with
+"Illegal instruction". It also needs glibc 2.34 or later (Ubuntu 22.04, Debian 12, RHEL 9, Fedora 35 and later releases).
 
 ### macOS
 
-Open the `.dmg`, drag **VX.app** to `/Applications`, eject the
-disk image. The first launch will prompt with Gatekeeper because
-the build is **ad-hoc signed** rather than notarised — control-
-click the app and choose "Open" once to whitelist it.
+Open the `.dmg`, drag **VX.app** to Applications and eject the image. The application is ad-hoc signed, not notarised:
+at the first start macOS refuses it once. Open System Settings > Privacy & Security, choose **Open Anyway** beside VX's
+entry, and confirm (the image's README.txt says the same, and gives the Terminal command that removes the quarantine
+instead). The bundle runs from any folder.
 
-The `.app` bundle is relocatable: it can run from `~/Applications`
-or a USB drive.
+### Windows
 
-### Windows (installer)
-
-Run `VX-X.Y.Z-windows-x86_64-setup.exe`. The installer is built
-with Inno Setup; it places VX under `Program Files\VX`, creates a
-Start Menu shortcut, and registers an uninstaller. Optional
-checkboxes during install: desktop shortcut, "register VX as the
-handler for `.vxs` session files".
-
-### Windows (portable ZIP)
-
-Extract anywhere and run `genome-viewer.exe` from the extracted
-folder. The bundle is self-contained — no system-wide install
-needed. Useful for USB-stick or shared-drive deployments.
+Extract the ZIP anywhere and run `vx.exe` in the extracted `vx-windows` folder. Nothing is installed system-wide.
+`vx-console.exe` beside it is the same program for a terminal: the command line, `--headless` and `--analysis`, whose
+answer it prints.
+Windows SmartScreen may warn at the first start (the program is not signed): choose *More info*, then *Run anyway*.
 
 ---
 
 ## What's bundled
 
-All three platforms ship with VX's non-baseline dependencies
-included so the binaries run on a stock OS install of a recent
-mainstream version.
-
-| Platform | Bundled (high level) |
+| Platform | Bundled |
 |---|---|
-| Linux | GTK3, Cairo, Pango, FreeType, fontconfig, GLib, harfbuzz, atk, gdk-pixbuf, glib-schemas, default theme |
-| macOS | ~30 dylibs (GTK3 stack + dependencies) via `dylibbundler`; `.app/Contents/Resources/` carries shaders, fonts, schemas |
-| Windows | ~50 DLLs (MinGW64 GTK3 stack), GdkPixbuf loaders, GTK themes, GLib schemas, default font |
+| Linux | VX and its font (DejaVu Sans Mono, with its licence); GTK 3 and the other libraries come from the distribution |
+| macOS | GTK 3 and the libraries it uses (35 libraries, Homebrew's builds for macOS 26), GTK's schemas, the Adwaita and hicolor icon themes, fontconfig's configuration, the font |
+| Windows | GTK 3 and the libraries it uses, libcurl with OpenSSL (53 DLLs, MSYS2's MINGW64 builds; libtiff built for VX without JBIG), the PNG, JPEG and SVG image loaders, GTK's schemas, the Adwaita and hicolor icon themes, fontconfig's configuration, the font |
 
-Per-library third-party license details are inside each archive's
-`THIRD_PARTY_LICENSES.txt`.
+The macOS and Windows packages hold `THIRD_PARTY_LICENSES.txt`: every library and data set they carry, with its version,
+licence, home page and source, followed by the licence texts. VX is based in part on works of the GtkD project
+(http://gtkd.org); the one change VX's build makes to GtkD is published in [`../third_party/GTKD.md`](../third_party/GTKD.md).
 
 ---
 
 ## Build provenance
 
-How each binary was produced — toolchain versions, compiler flags,
-build-host description — is documented in
-[`../docs/BUILD_PROVENANCE.md`](../docs/BUILD_PROVENANCE.md). The
-short version: LDC + DUB with full LTO and static druntime+phobos
-on Linux; LDC 1.41.0 with force-loaded static D runtime on macOS;
-MSVC-linked LDC on Windows.
+How each binary was produced (toolchain versions, compiler flags, build hosts) is in
+[`../docs/BUILD_PROVENANCE.md`](../docs/BUILD_PROVENANCE.md). In short: LDC 1.43.0 with full LTO and the D runtime
+linked statically on Linux; LDC 1.41.0 at -O3, without LTO, with the static D runtime force-loaded on macOS; LDC 1.43.0
+with the MSVC linker and full LTO on Windows.
 
 ---
 
@@ -130,15 +114,10 @@ MSVC-linked LDC on Windows.
 
 Please include:
 
-- Exact filename + version of the binary you downloaded.
-- SHA-256 hash (so we can confirm you got the right one).
-- OS and OS version.
-- The first ~50 lines of the diagnostic log produced by:
+- the exact file name and version of the binary you downloaded;
+- its SHA-256 digest (so that we can confirm which build it is);
+- the operating system and its version;
+- the log of the run: VX writes one file per run in `~/.local/state/vx/` on Linux, `~/Library/Logs/VX/` on macOS and
+  `%LOCALAPPDATA%\VX\logs\` on Windows. For more detail, start VX with `VX_VERBOSITY=t3l3` set in the environment.
 
-```bash
-VX_DEBUG_GL=1 VX_DEBUG_ALIGNMENT=1 ./bin/genome-viewer 2>/tmp/vx_dbg.log
-```
-
-See [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md)
-for the full diagnostic playbook.
-
+See [`../docs/TROUBLESHOOTING.md`](../docs/TROUBLESHOOTING.md) for more.

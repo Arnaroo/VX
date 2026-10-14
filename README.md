@@ -3,17 +3,18 @@
 > **A fast, cross-platform, GPU-accelerated desktop genome and
 > transcriptome browser, built from the ground up for *AI-agent
 > driven* exploration of sequencing data.**
-> Visualise FASTA / GTF / GFF / BAM / BigWig / BigBed / VCF /
-> Hi-C interaction tracks; run 50+ built-in computational analyses
-> against them; drive the whole thing from Claude, an LLM agent,
-> or a plain `curl` command through an embedded HTTP API.
+> Visualise FASTA / GTF / GFF / BAM / BED / BigBed / bedGraph /
+> BigWig / VCF / BEDPE interaction tracks; run 49 built-in
+> computational analyses against them; drive the whole thing from
+> Claude, an LLM agent, or a plain `curl` command through an
+> embedded HTTP API.
 
 <p align="center">
   <img src="docs/screenshots/vx_logo.png" alt="VX logo" width="160"/>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Arnaroo/VX/releases"><img src="https://img.shields.io/badge/release-v0.9.0%20Aardvark-blue" alt="release"></a>
+  <a href="https://github.com/Arnaroo/VX/releases"><img src="https://img.shields.io/badge/release-v0.10.0%20Banksia-blue" alt="release"></a>
   <a href="LICENSE-binaries.txt"><img src="https://img.shields.io/badge/binaries-CC--BY--NC--ND--4.0-lightgrey" alt="binaries licence"></a>
   <a href="mcp/LICENSE"><img src="https://img.shields.io/badge/MCP%20server-MIT-green" alt="MCP licence"></a>
   <a href="api/LICENSE"><img src="https://img.shields.io/badge/HTTP%20API-MIT-green" alt="API licence"></a>
@@ -25,29 +26,30 @@
 ## What VX is for
 
 VX is a **desktop genome browser** in the family of IGV, UCSC
-Genome Browser, JBrowse, Jbrowse 2, SeqMonk, Tablet, Pileup.js,
-and Pretzel, but built for a different decade. It targets four
-audiences that the current generation of browsers serves less
-well:
+Genome Browser, JBrowse, JBrowse 2, SeqMonk, Tablet, Pileup.js,
+and Pretzel, built around a different set of needs. It targets
+four audiences that the current generation of browsers serves
+less well:
 
 1. **Researchers** working with very large sequencing datasets
-   (multi-GB BAM, BigWig, Hi-C `.cool`/`.mcool`, multi-sample VCF)
-   on a laptop, who need an *instantly responsive* viewer that
-   doesn't lock up while a 23 GB BAM region cache warms.
+   (multi-GB BAM, BigWig, BEDPE contact lists, multi-sample VCF)
+   on a laptop, who need a viewer that stays responsive while the
+   reads of a region of a 23 GB BAM load in the background.
 2. **Bioinformaticians and computational biologists** who want
    to *run* analyses against the data while looking at it. Run
    peak calling, GC content, coverage anomalies, alignment QC,
-   variant density, Hi-C TAD boundaries, cross-track correlation,
-   directly from the viewer, in the background, with file
-   exports.
-4. **AI / agentic-LLM users** who want a genome browser their
+   variant density, TAD boundaries from Hi-C contacts, cross-track
+   correlation, directly from the viewer, in the background, with
+   file exports.
+3. **AI / agentic-LLM users** who want a genome browser their
    agent can *see and control*: navigate the viewport, load
-   files, screenshot tracks, run analyses, export regions, all
-   through a structured tool catalogue.
-5. **Educators and figure-makers** who want a reproducible,
-   scriptable, screenshot-and-record-ready viewer that produces
-   publication-grade output (PNG, SVG, MP4 / WebM / GIF screen
-   recordings) from a single binary.
+   files, capture tracks as images, run analyses and read their
+   result files, export regions, all through a structured tool
+   catalogue.
+4. **Educators and figure-makers** who want a reproducible,
+   scriptable viewer that produces publication-grade output
+   (PNG, JPEG, TIFF and SVG images, and MP4 / WebM / GIF
+   recordings of the viewport through ffmpeg).
 
 If you do **NGS, RNA-seq, ChIP-seq, ATAC-seq, Hi-C, long-read
 sequencing, variant calling, comparative genomics, transcript
@@ -62,20 +64,20 @@ or scriptable, VX is built for you.
 
 | Capability | What it means in practice |
 |---|---|
-| **GPU-accelerated rendering** | OpenGL-based level-of-detail engine: render tens of thousands of features per second, smooth pan/zoom from chromosome scale (10⁸ bp) to base level (10⁰ bp) in one continuous gesture. No tile-popping. No re-fetch on every nudge. |
-| **Async, background-thread BAM loading** | The viewport never blocks. Load a 23 GB BAM, click to a new region, render proceeds at full FPS while the read fetch completes in the background. A load-status strip tells you *why* the alignments aren't there yet. |
-| **43-tool MCP catalogue + HTTP API** | Built-in HTTP server on `127.0.0.1:9876`. Any tool that speaks HTTP (Claude Code, Claude Desktop, a Python script, `curl`) can drive every aspect of the viewer: navigate, load files, query genes, screenshot the viewport, run analyses, manage bookmarks, record video. AI-native by design. |
-| **50+ built-in analyses** | Peak calling, RPKM/TPM/CPM quantification, GC content, CpG density, motif search, repeat density, signal correlation, variant annotation, Ts/Tv, alleles, MAPQ distribution, insert sizes, strand bias, soft-clip frequency, Hi-C contact-vs-distance, TAD boundaries, heatmap matrix, profile plots, peak prominence, gap detection, all in a background thread with file output (BED / BedGraph / TSV). |
-| **Built-in video / GIF recording** | Capture the OpenGL viewport to MP4 (H.264), WebM (VP9) or GIF. Two modes: timer-paced (constant fps) or render-paced (every frame). Quality and frame rate user-controlled. Ideal for figure animations, talks, supplementary movies. |
-| **Subsampling + transparency** | Alignment tracks honour a configurable read-cap (default 500 reads/region) with a `min_mapq` filter. When a region is subsampled, a *badge* on the track tells you so. The screenshot endpoint respects the same cap, so all figures match what you see. |
-| **Self-contained binaries** | No Python runtime, no Conda environment, no JBrowse-style web stack. A single binary (~19 MB on Linux, ~45 MB macOS, ~46 MB Windows zip) with all GUI deps either bundled (Win/Mac) or relying on a baseline desktop install (Linux). Drop, double-click, run. |
-| **Triple-platform pre-compiled** | Linux x86_64 (4 CPU-profile binaries), macOS arm64 `.app` + `.dmg`, Windows x86_64 ZIP. Built with the LDC LLVM-based D compiler, full LTO, static druntime + Phobos. |
-| **No telemetry, no cloud, no account** | VX is a desktop application. It does not phone home. The HTTP API binds only to `127.0.0.1` by default. Your data stays on your machine. |
+| **GPU-accelerated rendering** | OpenGL drawing with levels of detail that follow the zoom: a whole chromosome (10⁸ bp) as feature density, then gene outlines, exons and, at the bottom, single bases (10⁰ bp). |
+| **Async, background-thread BAM loading** | BAM regions are read on a worker thread. The view keeps panning and zooming over the reads already held while the next window loads, and a load-status strip at the bottom of the viewport tells you *why* the alignments aren't there yet. |
+| **58-tool MCP server + HTTP API** | Built-in HTTP server on `127.0.0.1:9876` (55 commands through `POST /command`, plus `GET` endpoints for the state and for captures), and an MCP server of 58 tools over it. Claude Code, Claude Desktop or any other MCP client (through the MCP server), a Python script or `curl` can navigate, load files, query genes, capture images, run analyses and read their result files, manage bookmarks and sessions, and record video. |
+| **49 built-in analyses** | Peak calling, RPKM/TPM/CPM quantification, GC content, CpG density, motif search, repeat density, signal correlation, variant annotation, coding impact, Ts/Tv, allele frequency spectrum, MAPQ distribution, insert sizes, strand bias, soft-clip frequency, contact frequency against distance, TAD boundaries, heatmap matrix, profile plots, feature prominence, gap detection, all in a background thread with file output (BED / bedGraph / TSV) and a manifest of each run (its inputs with their SHA-256, the parameters as applied). |
+| **Built-in video / GIF recording** | Capture the OpenGL viewport to MP4 (H.264), WebM (VP9) or GIF through ffmpeg (installed separately). Two modes: timer-paced (constant fps) or render-paced (every frame). Quality and frame rate user-controlled. For figure animations, talks, supplementary movies. |
+| **Subsampling + transparency** | Alignment tracks honour a configurable read cap (default 500 reads in view) and a `min_mapq` filter, set per track in the track panel or through the API. The reads held are a sample of the whole window, the same at every visit, and the coverage strip counts every read of the window, not only the sample. When a view is subsampled, a *badge* on the track says so (`kept/total`). Captures render the reads the view shows. |
+| **Self-contained binaries** | No Python runtime, no Conda environment, no web stack. One download per platform (8.1 MB for Linux, 22.9 MB for macOS, the Windows ZIP to follow, for Windows): the macOS and Windows packages carry GTK and the libraries it uses; on Linux VX uses the distribution's GTK 3, FreeType and OpenGL driver. Unpack, or drag to Applications, and run. |
+| **Three platforms, pre-compiled** | Linux x86-64 and Windows x86-64 (one build each, for x86-64-v3 processors), macOS on Apple silicon (`VX.app` in a `.dmg`). Built with LDC, the LLVM-based D compiler, with the D runtime and Phobos linked in statically; full LTO on Linux and Windows. |
+| **No account; usage statistics only if you opt in** | VX is a desktop application with no account and no cloud service. Anonymous usage statistics are opt-in and off by default: VX asks at the first start (and, after a *Not now*, once more ten launches later), shows the exact fields, and sends nothing unless you agree. Otherwise VX goes on the network only to download: a demo dataset you open (this repository's `demo-data-v1` release), a genome you retrieve (Retrieve Reference), and UCSC's chromosome band table when a FASTA you load is named for a known assembly (GRCh38, hg38, mm10 and others) and has no `cytoBand.txt` beside it (the table is saved there). The HTTP API listens on `127.0.0.1` only. Your data stays on your machine. |
 
 If you've used IGV and wished it were faster, or JBrowse and
 wished it weren't a browser tab, or Pileup.js and wished it ran
 big files, or any genome browser and wished an AI agent could
-drive it, VX is the answer.
+drive it, VX was written with those wishes in mind.
 
 ---
 
@@ -84,37 +86,32 @@ drive it, VX is the answer.
 <table>
 <tr>
 <td><img src="docs/screenshots/01_chromosome_overview.png" alt="Chromosome-scale overview" width="380"/></td>
-<td><img src="docs/screenshots/02_gene_boundaries.png" alt="Gene boundaries" width="380"/></td>
+<td><img src="docs/screenshots/03_gene_detail.png" alt="Genes around BRCA1" width="380"/></td>
 </tr>
 <tr>
-<td align="center"><em>Chromosome-scale overview — 1 ideogram + multiple tracks rendered at 10⁸ bp resolution.</em></td>
-<td align="center"><em>Gene boundaries with intron-collapse for fast structure inspection.</em></td>
+<td align="center"><em>Chromosome scale: the whole of chromosome 17 (83 Mb), its genes drawn as a density histogram, with the sequence and an alignment track.</em></td>
+<td align="center"><em>Gene level: 126 kb around BRCA1, each gene with its exons and introns, coloured by biotype.</em></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/03_gene_detail.png" alt="Gene detail" width="380"/></td>
 <td><img src="docs/screenshots/04_exon_detail.png" alt="Exon-level detail" width="380"/></td>
-</tr>
-<tr>
-<td align="center"><em>Gene-level detail with transcript isoforms.</em></td>
-<td align="center"><em>Exon-level detail showing UTRs, CDS, splice sites.</em></td>
-</tr>
-<tr>
 <td><img src="docs/screenshots/05_base_level.png" alt="Base-level resolution" width="380"/></td>
-<td><img src="docs/screenshots/06_dark_mode.png" alt="Dark mode" width="380"/></td>
 </tr>
 <tr>
-<td align="center"><em>Base-level resolution with codon highlighting and frame translation.</em></td>
-<td align="center"><em>Dark mode for long sessions / projector-friendly figures.</em></td>
+<td align="center"><em>Exon level: 8 kb of BRCA1, the translated part of each exon (the translon) at full height, the UTRs thinner.</em></td>
+<td align="center"><em>Base level: 200 bp, each base a coloured bar.</em></td>
 </tr>
 <tr>
 <td><img src="docs/screenshots/07_multi_track.png" alt="Multi-track view" width="380"/></td>
 <td><img src="docs/screenshots/gene_structure_diagram.png" alt="Gene structure schematic" width="380"/></td>
 </tr>
 <tr>
-<td align="center"><em>Multi-track composition: sequence + genes + coverage + alignments + signal + variants.</em></td>
-<td align="center"><em>Anatomy of a gene track — UTRs, exons, introns, strand arrows.</em></td>
+<td align="center"><em>Several tracks together: sequence, genes and alignments over 300 kb of chromosome 1.</em></td>
+<td align="center"><em>Anatomy of a gene track: exons, UTRs, the translated part, introns, strand arrows.</em></td>
 </tr>
 </table>
+
+The screenshots were taken with VX 0.9.0; the window of 0.10.0
+differs in details.
 
 ---
 
@@ -127,57 +124,69 @@ and grab one asset for your system:
 
 | Platform | Asset | Size |
 |---|---|---|
-| **Linux x86_64** (Haswell-class or newer; AVX2/BMI2/FMA) | `VX-X.Y.Z-linux-x86_64.tar.gz` | ~6.6 MB |
-| **macOS arm64** (Apple Silicon, macOS 13+) | `VX-X.Y.Z-macos-arm64.dmg` | ~18 MB |
-| **Windows x86_64** (Windows 10 22H2 or Windows 11) | `vx-X.Y.Z-windows-x86_64.zip` | ~46 MB |
+| **Linux x86-64** (an x86-64-v3 processor: Intel Haswell, AMD Excavator or later; glibc 2.34 or later) | `VX-0.10.0-linux-x86_64.tar.gz` | 8.1 MB |
+| **macOS arm64** (Apple silicon, macOS 26 or later) | `VX-0.10.0-macos-arm64.dmg` | 22.9 MB |
+| **Windows x86-64** (Windows 10 or 11; an x86-64-v3 processor) | `VX-0.10.0-windows-x86_64.zip` | to follow |
 
-Each asset has a matching `.sha256` sidecar. Verify before
+Each asset has a matching `.sha256` file beside it. Verify before
 running:
 
 ```bash
-sha256sum    -c VX-X.Y.Z-linux-x86_64.tar.gz.sha256        # Linux
-shasum -a 256 -c VX-X.Y.Z-macos-arm64.dmg.sha256           # macOS
-certutil -hashfile vx-X.Y.Z-windows-x86_64.zip SHA256      # Windows
+sha256sum -c VX-0.10.0-linux-x86_64.tar.gz.sha256          # Linux
+shasum -a 256 -c VX-0.10.0-macos-arm64.dmg.sha256          # macOS
+certutil -hashfile VX-0.10.0-windows-x86_64.zip SHA256     # Windows: compare with the .sha256 file
 ```
 
 ### 2. Unpack / install
 
 **Linux** relocatable tarball:
 ```bash
-tar xzf VX-X.Y.Z-linux-x86_64.tar.gz
-cd vx-linux/
-./bin/genome-viewer
+tar xzf VX-0.10.0-linux-x86_64.tar.gz
+./VX-0.10.0-linux-x86_64/bin/vx
 ```
-Linux dependencies are expected to be present from a baseline
-GNOME / KDE / XFCE desktop install: `glibc 2.28+`, `GTK 3.24+`,
-`GLib 2.60+`, `Cairo`, `Pango`, `freetype`, `libepoxy`, an
-OpenGL driver (`libGL.so.1`).
-- Ubuntu 20.04+: `sudo apt install libgtk-3-0 libgl1 libepoxy0`
-- Fedora 35+ / RHEL 9: `sudo dnf install gtk3 mesa-libGL libepoxy`
-- Arch / Manjaro: `sudo pacman -S gtk3 libepoxy mesa`
+The tarball holds VX, the font it draws with (DejaVu Sans Mono,
+with its licence) and its documents (`README-INSTALL.txt` says
+what is where). VX uses the distribution's GTK 3, FreeType and
+OpenGL driver (OpenGL 3.3 or later), which most desktops have;
+otherwise:
+- Debian, Ubuntu: `sudo apt install libgtk-3-0 libfreetype6 libgl1`
+- Fedora: `sudo dnf install gtk3 freetype mesa-libGL`
+- Arch: `sudo pacman -S gtk3 freetype2 libglvnd`
 
-**macOS arm64** `.dmg` installer:
-1. Double-click `VX-X.Y.Z-macos-arm64.dmg`.
-2. Drag `VX.app` into the `Applications` folder.
-3. First launch: right-click `VX.app` → **Open** (Gatekeeper
-   one-time confirmation; the bundle is ad-hoc signed only,
-   no Developer ID).
-4. Or, from Terminal:
+The binary needs glibc 2.34 or later (Ubuntu 22.04, Debian 12,
+RHEL 9, Fedora 35 and later releases). fontconfig (the system's fonts),
+libcurl (downloads: the demo datasets, Retrieve Reference) and
+ffmpeg (video recording) are used when present.
+
+**macOS arm64** `.dmg`:
+1. Open `VX-0.10.0-macos-arm64.dmg` and drag `VX.app` into the
+   `Applications` folder.
+2. First start: VX is signed ad hoc, not notarised, so macOS
+   refuses it the first time. Click Done, open System Settings >
+   Privacy & Security, click **Open Anyway** beside the line
+   about VX and confirm. Later starts open at once.
+3. Or, before the first start, from Terminal:
    `xattr -dr com.apple.quarantine /Applications/VX.app`
 
-**Windows x86_64** relocatable ZIP:
-1. Extract `vx-X.Y.Z-windows-x86_64.zip` anywhere.
-2. Double-click `genome-viewer.exe` inside the extracted folder.
-3. Windows SmartScreen may warn on first launch (unsigned). Click
-   *More info* → *Run anyway*.
+The disk image's `README.txt` says the same.
+
+**Windows x86-64** relocatable ZIP:
+1. Extract `VX-0.10.0-windows-x86_64.zip` anywhere.
+2. Run `vx.exe` in the extracted `vx-windows` folder. Nothing is
+   installed system-wide. `vx-console.exe` beside it is the same
+   program for a terminal: the command line, `--headless` and
+   `--analysis` (whose answer it prints).
+3. Windows SmartScreen may warn at the first start (the program
+   is not signed): choose *More info*, then *Run anyway*.
 
 ### 3. Verify it works
 
-VX exposes an HTTP API on `127.0.0.1:9876`. From any shell:
+While VX runs it serves an HTTP API on `127.0.0.1:9876` (on by
+default; Settings > MCP / API). From any shell:
 
 ```bash
 curl -s http://127.0.0.1:9876/ping
-# → {"status":"ok","app":"VX Genome Viewer","api_version":2}
+# → {"status":"ok","app":"VX","api_version":2}
 ```
 
 That's your installation test.
@@ -187,10 +196,11 @@ That's your installation test.
 ## Drive VX from Claude or any LLM (MCP)
 
 VX ships with an open-source MCP server
-([`mcp/vx_mcp_server.py`](mcp/vx_mcp_server.py), MIT) that
-exposes the entire viewer to AI agents that speak the
+([`mcp/vx_mcp_server.py`](mcp/vx_mcp_server.py), MIT) of 58
+tools that exposes the viewer to AI agents that speak the
 **Model Context Protocol**: Claude Code, Claude Desktop, and any
-MCP-compatible client.
+MCP-compatible client. Its capture tools return the image itself,
+which a vision model sees.
 
 ```bash
 # One-time setup
@@ -211,8 +221,12 @@ video recording).
 
 ## Drive VX from a script (HTTP API)
 
-Every MCP tool is also a plain HTTP endpoint. The full schema is
-[`api/openapi.yaml`](api/openapi.yaml) (OpenAPI 3.1, validated).
+Every MCP tool calls VX's HTTP API, which any HTTP client can call
+directly: 55 commands through `POST /command`, beside `GET /ping`,
+`GET /state` and the capture endpoints. An error answer carries
+an HTTP status (400, 403, 404, 405, 409, 501, 503, 504 or 500) and a
+JSON body with `error` and `code`. The schema is
+[`api/openapi.yaml`](api/openapi.yaml) (OpenAPI 3.1).
 Three runnable examples:
 
 - **bash + curl:** [`api/examples/curl_navigate.sh`](api/examples/curl_navigate.sh)
@@ -231,7 +245,7 @@ curl -s 'http://127.0.0.1:9876/screenshot/viewport?scale=2.0' \
 
 # Run a peak-calling analysis on the visible region
 curl -X POST -H 'Content-Type: application/json' \
-     -d '{"command":"run_analysis","params":{"analysis":"SimplePeakCalling","tracks":["ChIP_signal"]}}' \
+     -d '{"command":"run_analysis","params":{"type":"SimplePeakCalling","tracks":["ChIP_signal"]}}' \
      http://127.0.0.1:9876/command
 ```
 
@@ -239,11 +253,14 @@ curl -X POST -H 'Content-Type: application/json' \
 
 ## What you get out of the box
 
-### Built-in computational analyses (50+, all in background thread)
+### Built-in computational analyses (49, each in a background thread)
+
+The names are the API's. The window shows each in words
+("GC Content"); four go by other names there, given in brackets.
 
 **Signal & quantification:** `SignalDifference`, `SignalRatio`,
-`ZScoreNormalization`, `RPKM`, `TPM`, `CPM`, `PerExonCoverage`,
-`BinStatistics`, `RegionDifferential`
+`ZScoreNormalization`, `FeatureCounts`, `RPKM`, `TPM`, `CPM`,
+`PerExonCoverage`, `BinStatistics`, `RegionDifferential`
 
 **Peak calling & enrichment:** `SimplePeakCalling`,
 `EnrichmentOverInput`, `FeatureProminence`, `CoverageAnomalies`,
@@ -253,7 +270,7 @@ curl -X POST -H 'Content-Type: application/json' \
 `RepeatDensity`, `NucleotideFrequency`
 
 **Intervals:** `IntervalIntersection`, `IntervalSubtraction`,
-`IntervalUnion`, `ClosestFeature`, `FeatureCounts`
+`IntervalUnion`, `ClosestFeature`
 
 **Variants:** `VariantAnnotation`, `TsTvRatio`, `VariantDensity`,
 `AlleleFrequencySpectrum`, `VariantIntersection`, `CodingImpact`
@@ -261,62 +278,76 @@ curl -X POST -H 'Content-Type: application/json' \
 **Alignment QC:** `MappingQualityDistribution`,
 `InsertSizeDistribution`, `StrandBias`, `DuplicateRate`,
 `SoftClipFrequency`, `ChimericReadDensity`, `ReadLengthDistribution`,
-`PerBaseMismatchRate`
+`PerBaseMismatchRate` (Edit Rate), `MismatchRate`
 
 **Hi-C / interaction:** `ContactFrequencyVsDistance`,
-`InteractionEnrichment`, `TADBoundaryDetection`
+`InteractionEnrichment` (Interactions at Features),
+`InteractionEnrichmentOverExpected` (Interaction Enrichment),
+`TADBoundaryDetection`
 
 **Cross-track:** `SignalCorrelation`, `SignalAtFeatures`,
 `HeatmapMatrix`, `ProfilePlotData`
 
-Each analysis writes BED / BedGraph / TSV / CSV output to a
-configurable results directory and can optionally create a new
-track from the result.
+**Export:** `TrackExport` (Export Track Data)
+
+Each analysis writes a BED, bedGraph or TSV file (Export Track
+Data writes a variant track as VCF) to a configurable results
+directory, with a manifest beside it (`<result>.manifest.json`:
+the VX version, each input file with its size and, up to a size
+set in Settings, its SHA-256, the parameters as applied, the
+region), and can add the result as a
+new track. The analyses are checked from outside by a validation
+package (MIT): Python reference implementations of the 49
+analyses, fixtures with expected outputs, and a runner that drives
+a VX binary through its HTTP API and compares every file it
+writes.
 
 ### File formats supported
 
-**Sequence:** FASTA, FASTA.gz, indexed FASTA (`.fai`).
-**Annotation:** GTF, GFF3, GFF, GFF.gz.
-**Alignments:** BAM (with `.bai` index), CRAM (limited).
-**Signal:** BigWig, BedGraph.
-**Intervals:** BED, BED.gz, BigBed.
-**Variants:** VCF, VCF.gz (with `.tbi` index).
-**Interaction:** Hi-C contact matrices (`.cool`, `.mcool`, planned).
+**Sequence:** FASTA (`.fa`, `.fasta`, `.fna`, `.fas`), plain or gzip.
+**Annotation:** GTF, GFF, GFF3, plain or gzip.
+**Alignments:** BAM, with its `.bai` index beside it.
+**Signal:** BigWig, bedGraph, Wiggle.
+**Intervals:** BED (BED3, BED6, BED12), BigBed.
+**Variants:** VCF, plain, gzip or BGZF.
+**Interaction:** BEDPE (paired contacts, such as Hi-C loops).
+**Transcript integrity:** INDEGRA's process table (`{sample}_process.txt`).
+**Sessions:** `.vxs`.
 
-See [`docs/FILE_FORMATS.md`](docs/FILE_FORMATS.md) for the full
+BED, bedGraph and Wiggle files may also be gzip-compressed. See
+[`docs/FILE_FORMATS.md`](docs/FILE_FORMATS.md) for the full
 matrix.
 
 ### Export formats
 
-**Static:** PNG (full window, viewport, single-track), SVG
-(vector, viewport, single-track), BED / BedGraph / TSV / CSV
-(analysis output), session save / restore.
+**Static:** PNG, JPEG and TIFF (the viewport at a chosen scale;
+through the API also the whole window and a single track as
+PNG), SVG (the viewport, as editable vector graphics), the view's
+sequence (FASTA) or genes and features (GFF), a track's data
+(VCF, bedGraph or TSV), analysis results (BED, bedGraph, TSV, with
+their manifests), session save / restore (`.vxs`).
 **Animated:** MP4 (H.264), WebM (VP9), GIF direct viewport
 capture via ffmpeg pipe.
 
 ---
 
-## Known limitations in v0.9.0
+## Known limitations in v0.10.0
 
-These are documented up front so you can decide whether v0.9.0
+These are documented up front so you can decide whether v0.10.0
 fits your workflow.
 
-- **Windows ZIP** ships a console-subsystem build, launching from
-  Explorer opens a cmd window alongside the GUI. Cosmetic only;
-  the GUI itself works identically. A no-console (GUI subsystem)
-  build is planned for v0.9.x.
-- **Windows `.exe` installer** is not included in v0.9.0
-  (Inno Setup workflow needs further work on the build host).
-  ZIP-only Windows distribution for this release.
-- **macOS bundle** is ad-hoc signed only (no Developer ID,
-  no notarisation). First launch requires right-click → Open
-  to clear the one-time Gatekeeper confirmation. The HTTP API
-  and the relocatable bundle pass smoke tests; full GUI
-  verification on physical Apple Silicon is pending (current
-  testing has been on a software-rendered VM tier).
-- **First-region BAM fetch** on cold ≥20 GB BAMs can take ~2 min
-  while the OS warms the BAM index page cache. The load-status
-  strip surfaces this to the user; subsequent regions are fast.
+- **Signing.** The macOS bundle is signed ad hoc only (no
+  Developer ID, no notarisation): macOS refuses its first start
+  until you allow it in System Settings > Privacy & Security
+  (*Open Anyway*). The Windows program is not signed, so
+  SmartScreen may warn at its first start.
+- **No Windows installer.** Windows is distributed as a ZIP that
+  runs from any folder; there is no `.exe` or `.msi` installer in
+  v0.10.0.
+- **First-region BAM fetch** on a cold, very large BAM (about
+  20 GB and more) can take about 2 minutes the first time you
+  navigate into a chromosome. The load-status strip shows that
+  the fetch is running; later regions are fast.
 - **No web/cloud version.** VX is a desktop application. If you
   need an embeddable browser-tab viewer, JBrowse 2 may suit you
   better.
@@ -339,10 +370,12 @@ separate private development tree under a proprietary licence
 | [`api/`](api/) | OpenAPI 3.1 HTTP API spec + curl/Python/Claude examples | **MIT** |
 | [`docs/`](docs/) | User guide, file-format guide, keyboard shortcuts, troubleshooting, build provenance, screenshots | **CC-BY-4.0** |
 | [`binaries/`](binaries/) | Release-asset notes + SHA-256 verification recipes | **CC-BY-4.0** |
+| [`third_party/`](third_party/) | The one change VX's build makes to GtkD, published as GtkD's licence asks | **LGPL-3.0-or-later** (the change) |
 | Pre-compiled binaries | Attached to each tagged release under [**Releases**](https://github.com/Arnaroo/VX/releases) | **CC-BY-NC-ND-4.0** |
 
-The per-folder LICENSE matrix is reflected by `LICENSE-binaries.txt`,
-`LICENSE-docs.txt`, `mcp/LICENSE`, and `api/LICENSE`.
+The per-folder licence matrix is reflected by `LICENSE-binaries.txt`,
+`LICENSE-docs.txt`, `mcp/LICENSE` and `api/LICENSE`;
+[`third_party/GTKD.md`](third_party/GTKD.md) states its own.
 
 ---
 
@@ -357,6 +390,17 @@ The pre-compiled binaries are licensed under
 attribution). For commercial licensing, OEM integration,
 white-label deployment, or source-code access:
 [contact@biocodecs.org](mailto:contact@biocodecs.org).
+
+VX is based in part on works of the GtkD project (http://gtkd.org).
+The libraries the macOS and Windows packages carry (GTK 3 and the
+libraries it uses; on Windows also libcurl with OpenSSL) keep
+their own licences: each package's `THIRD_PARTY_LICENSES.txt`
+names every library it holds, with its version, licence and
+source, followed by the licence texts. On Linux these libraries
+come from the distribution. Every package holds the font VX draws
+with, DejaVu Sans Mono, with its licence. The one change VX's
+build makes to GtkD is published in
+[`third_party/GTKD.md`](third_party/GTKD.md).
 
 The **MCP server** ([`mcp/`](mcp/)) and the **HTTP API
 specification** ([`api/`](api/)) ARE open source under MIT and
@@ -379,7 +423,7 @@ manuscript and the Zenodo DOI of the specific release you used.
 
 **Cite a specific release (v0.9.0.1, snapshot of the v0.9.0 "Aardvark" public pre-release):**
 
-> Shirokikh, N. E., & Cleynen, A. (2026). *Arnaroo/VX: VX 0.9.0.1 — archival re-publish.* Zenodo. https://doi.org/10.5281/zenodo.20234451
+> Shirokikh, N. E., & Cleynen, A. (2026). *Arnaroo/VX: VX 0.9.0.1, archival re-publish.* Zenodo. https://doi.org/10.5281/zenodo.20234451
 
 BibTeX:
 

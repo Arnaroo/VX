@@ -396,8 +396,8 @@ separate private development tree under a proprietary licence
 |---|---|---|
 | [`mcp/`](mcp/) | Open-source Python MCP server for Claude / agents | **MIT** |
 | [`api/`](api/) | OpenAPI 3.1 HTTP API spec + curl/Python/Claude examples | **MIT** |
-| [`docs/`](docs/) | User guide, file-format guide, keyboard shortcuts, troubleshooting, build provenance, screenshots | **CC-BY-4.0** |
-| [`binaries/`](binaries/) | Release-asset notes + SHA-256 verification recipes | **CC-BY-4.0** |
+| [`docs/`](docs/) | User guide, file-format guide, keyboard shortcuts, troubleshooting, build provenance, screenshots | **CC-BY-NC-ND-4.0** |
+| [`binaries/`](binaries/) | Release-asset notes + SHA-256 verification recipes | **CC-BY-NC-ND-4.0** |
 | [`third_party/`](third_party/) | The one change VX's build makes to GtkD, published as GtkD's licence asks | **LGPL-3.0-or-later** (the change) |
 | Pre-compiled binaries | Attached to each tagged release under [**Releases**](https://github.com/Arnaroo/VX/releases) | **CC-BY-NC-ND-4.0** |
 

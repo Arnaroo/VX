@@ -114,6 +114,13 @@ machine).
   VX".** VX must be running BEFORE the client invokes a tool. Many
   MCP clients start the server lazily; the first call will fail if
   VX is not yet up.
+- **A tool takes minutes.** `vx_next_coverage_region`,
+  `vx_aggregate_rows`, `vx_read_result_rows`,
+  `vx_load_demo(case="builtin")`, `vx_export_circular_view` and
+  `vx_dot_plot` answer when their work ends, and the server waits
+  for them without a timeout of its own; a client's own tool
+  timeout may end the wait first. VX goes on drawing and answering
+  other tools meanwhile.
 
 ---
 

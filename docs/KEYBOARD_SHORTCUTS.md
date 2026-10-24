@@ -49,14 +49,21 @@ shortcuts saved by an earlier version are read the same way.
 | Increase magnification | `+` or `=` (while `Alt` is held) |
 | Decrease magnification | `-` (while `Alt` is held) |
 | Adjust magnification | `Alt` + scroll wheel |
+| Keep the magnifier on without holding `Alt` (twice again lets it go; since 0.11.0) | Press `Alt` twice quickly (each press within 0.4 s of the last, nothing else pressed, clicked or scrolled meanwhile) |
 
 ## Bookmarks
 
 | Action | Default |
 |---|---|
 | Add a bookmark of the view (nothing while no reference is loaded) | `Ctrl+B` |
-| Next bookmark | `Ctrl+]` |
-| Previous bookmark | `Ctrl+[` |
+| Next bookmark (of those Quick Navigation shows) | `Ctrl+]` |
+| Previous bookmark (of those Quick Navigation shows) | `Ctrl+[` |
+
+## Edit mode
+
+| Action | Default |
+|---|---|
+| Cancel a drag that moves or resizes an item (with the Edit tab shown) | `Escape` |
 
 ## Recording
 
@@ -71,7 +78,8 @@ shortcuts saved by an earlier version are read the same way.
 | Pan | Scroll wheel, or drag |
 | Zoom | `Ctrl` + scroll wheel (`Command` on macOS) |
 
-The mouse actions are fixed; they are not rebound in Settings.
+The mouse actions, the magnifier's keys and `Escape` are fixed;
+they are not rebound in Settings.
 
 ---
 

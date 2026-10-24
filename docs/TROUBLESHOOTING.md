@@ -96,7 +96,12 @@ drawn in the track's label column.
   matches part of a name or an ID, whatever the case, and lists up
   to 100 genes.
 - A gene's name is its `gene_name` attribute, else its `Name`
-  (GFF3), else its ID.
+  (GFF3), else its ID. Since 0.11.0 a gene whose ID is on two
+  chromosomes, or twice apart on one (Liftoff's copies), is two
+  genes, and the search lists each, shown with its chromosome in
+  brackets ("ATCG00150 (ChrC)") or, beside another copy on its
+  chromosome, with its chromosome and first base ("ATMG01360
+  (Chr2:3,591,778)").
 
 ---
 
@@ -127,7 +132,13 @@ test.
   port 9876. Check `ss -ltnp | grep 9876` (Linux) /
   `lsof -i :9876` (macOS).
 - An error answer comes with an HTTP status and a JSON body
-  (`error`, `code`, `details`): read the body. A `504` with
+  (`error`, `code`, `details`): read the body. A `403` with
+  `FORBIDDEN_ORIGIN` (since 0.11.0) means the request looked like
+  one a web browser sends for a page: it carried an `Origin`
+  header, a `Host` header other than `127.0.0.1`, `localhost` or
+  `[::1]`, or a `Sec-Fetch-Site` header other than `none`. Send it
+  from a script, `curl` or the MCP server, which send none of
+  these. A `504` with
   `TIMEOUT` means the window did not answer in time (Settings >
   Appearance > Performance, API timeout, 30 s by default); the
   command may still have been carried out, so ask for `/state`.
@@ -188,7 +199,51 @@ stderr by design.
 
 ---
 
-## 11. Reporting bugs
+## 11. The chromosome bands do not show
+
+The Bands switch draws UCSC's chromosome bands for a reference
+read as a genome whose file or folder name names an assembly UCSC
+knows (GRCh38, hg19, GRCm39, mm10 and the like). VX reads a
+`cytoBand.txt` beside the FASTA or in its parent folder first,
+then its cache directory's copy; else it fetches the table on a
+thread of its own and keeps it in its cache directory, and the
+bands appear when it arrives (since 0.11.0).
+
+- A reference read as a transcriptome has no bands; check its
+  Reference mode in the left panel.
+- The fetch needs libcurl and the network; put UCSC's
+  `cytoBand.txt` for the assembly beside the FASTA otherwise. A
+  mirror can be named with the `VX_CYTOBAND_BASE_URL` environment
+  variable.
+
+---
+
+## 12. A `.cool`, `.mcool` or `.hic` file does not load
+
+VX reads contacts from BEDPE files only, and refuses these
+formats with the reason. Write the contacts as BEDPE (for a
+cooler file, `cooler dump --join`) and load that: an interaction
+track draws them as arcs or, in its Matrix display, binned and
+balanced, and Contact Matrix computes the same matrix.
+
+---
+
+## 13. The Known Features pane stays empty
+
+Each tab's *Sources* lines say what each service did: fetched,
+from the cache, not asked (and why), or failed (and why).
+
+- Settings > Known Features: a service turned off, or *Use the
+  cache only* on, asks nothing.
+- The requests need libcurl and the network (each waits 20 s at
+  most). A session's restored tabs are filled from the cache
+  alone; press *Refresh* to ask again.
+- A gene's name is looked up in the species of Settings > Known
+  Features; an Ensembl, FlyBase or WormBase ID names its own.
+
+---
+
+## 14. Reporting bugs
 
 Open an issue on the GitHub repository with:
 

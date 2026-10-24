@@ -7,7 +7,7 @@ info:
     VX runs an embedded HTTP server on `127.0.0.1:9876` for external tool
     integration (e.g. the Claude MCP server in `../mcp/vx_mcp_server.py`).
     The port is set in Settings > MCP / API, or with `--port N` on the
-    command line. This document describes the API as VX 0.10.0 serves it
+    command line. This document describes the API as VX 0.11.0 serves it
     (`GET /ping` answers `"api_version":2`).
 
     The API's endpoints:
@@ -21,14 +21,16 @@ info:
     Nearly all functionality goes through `POST /command`. Each request body
     is `{ "command": "<name>", "params": { ... } }` and the response is
     JSON shaped by the command (see the `RequestCommand_*` and
-    `Response_*` schemas in `#/components`).
+    `Response_*` schemas in `#/components`). Positions are 0-based with
+    the end excluded unless a key says otherwise.
 
-    ## Commands (55)
+    ## Commands (91)
 
     - **File loading:** `load_file`
     - **Track management:** `set_track_visibility`, `set_track_height`,
       `set_track_scroll`, `remove_track`, `reorder_track`
-    - **Group management:** `create_group`, `switch_group`, `remove_group`
+    - **Group management:** `create_group`, `switch_group`, `remove_group`,
+      `set_reference_mode`
     - **Navigation:** `navigate`, `zoom`, `pan`, `next_coverage_region`,
       `cancel_coverage_scan`
     - **Data queries:** `get_sequence`, `get_genes`, `search_genes`
@@ -40,27 +42,63 @@ info:
     - **Bookmarks:** `add_bookmark`, `list_bookmarks`, `remove_bookmark`,
       `goto_bookmark`
     - **Chromosomes:** `list_chromosomes`
-    - **Track options:** `set_signal_options`, `set_variant_options`,
-      `set_interaction_options`, `set_alignment_options`
+    - **Track options:** `set_track_options`, `set_coverage_options`,
+      `set_signal_options`, `set_variant_options`, `set_interaction_options`,
+      `set_sequence_options`, `set_gene_options`, `set_feature_options`,
+      `set_alignment_options`
     - **Read aggregates and transcript DTI:** `add_aggregate_track`,
       `set_aggregate_options`, `aggregate_rows`, `add_dti_track`,
       `set_dti_options`, `dti_lookup`
+    - **Sashimi and overlay tracks:** `add_sashimi_track`,
+      `set_sashimi_options`, `add_overlay_track`, `set_overlay_options`
     - **Analysis:** `list_analyses`, `run_analysis`, `analysis_status`,
       `cancel_analysis`, `read_result_rows`
     - **Recording:** `start_recording`, `stop_recording`, `recording_status`
     - **Sessions and the process:** `save_session`, `load_session`, `shutdown`
     - **Demo data:** `load_demo`, `demo_status`
+    - **Known Features:** `known_features`, `known_features_status`,
+      `close_known_features`, `export_known_features`,
+      `set_known_features_options`
+    - **Edit mode:** `edit_add_gene`, `edit_add_transcript`, `edit_add_exon`,
+      `edit_add_feature`, `edit_move`, `edit_resize`, `edit_delete`,
+      `edit_rename`, `edit_set_strand`, `edit_set_biotype`,
+      `edit_insert_bases`, `edit_delete_bases`, `edit_replace_bases`,
+      `edit_undo`, `edit_redo`, `edit_list`, `edit_write`, `edit_discard`
+    - **Circular view and dot plot:** `open_circular_view`,
+      `export_circular_view`, `dot_plot`
 
-    Two commands answer when their work ends, not at once:
-    `next_coverage_region` (when its scan ends) and `read_result_rows` (when
-    its page is read). Give them no short client timeout.
+    New in 0.11.0 (36 of them): `set_reference_mode`;
+    `set_track_options`, `set_coverage_options`, `set_sequence_options`,
+    `set_gene_options` and `set_feature_options`; the Sashimi and overlay
+    commands; the Known Features commands; the Edit mode's commands; the
+    circular view and dot plot commands.
+
+    ## Answers that come when the work ends
+
+    Six commands answer when their work ends, not at once:
+    `next_coverage_region` (when its scan ends, which on a whole
+    chromosome of a large BAM can take a minute or more),
+    `aggregate_rows` (when its rows are counted), `read_result_rows` (when
+    its page is read), `load_demo` with case `builtin` (when the built-in
+    demo is made), `export_circular_view` and `dot_plot` (when the file is
+    written). Their work runs beside the window, which goes on drawing and
+    answering other requests; the API's timeout does not bound them, so
+    give them no short client timeout.
 
     ## Security model
 
     The server binds to `127.0.0.1` only, has no authentication, and is
-    intended for same-machine use. It sends no CORS headers and answers
-    `OPTIONS` with 405, so a page in a web browser cannot drive it. If you
-    want remote access, tunnel over SSH: `ssh -L 9876:127.0.0.1:9876 user@host`.
+    intended for same-machine use. Since 0.11.0 it refuses, with 403
+    `FORBIDDEN_ORIGIN` and before any command runs, a request that a web
+    browser sends for a page: one whose head carries an `Origin` header
+    (whatever its value), one whose `Host` header names a host other than
+    `127.0.0.1`, `localhost` or `[::1]` (any port; a request without
+    `Host` is taken), and one whose `Sec-Fetch-Site` header is anything but
+    `none`. Scripts, `curl` and the MCP server send none of these, and no
+    `Content-Type` is required. The server sends no CORS headers and
+    answers `OPTIONS` with 405. A request head that does not end within
+    64 KiB or 10 s is answered 400 `PARSE_ERROR`. For remote access,
+    tunnel over SSH: `ssh -L 9876:127.0.0.1:9876 user@host`.
 
     ## Error model
 
@@ -70,15 +108,21 @@ info:
       * `code`:     machine-readable code (`ErrorBody` lists them)
       * `details`:  optional remediation hint
 
-    Since 0.10.0 the HTTP status follows the code (a success is 200):
-    400 for `INVALID_PARAMS`, `PARSE_ERROR`, `UNKNOWN_ANALYSIS` and
-    `NOT_SUPPORTED`; 403 for `NOT_A_RESULT`; 404 for `UNKNOWN_COMMAND`,
-    `UNKNOWN_ENDPOINT`, `NOT_FOUND` and any code ending in `_NOT_FOUND`;
-    405 for `METHOD_NOT_ALLOWED`; 409 for `BUSY`, `INVALID_STATE`,
+    The HTTP status follows the code (a success is 200): 400 for
+    `INVALID_PARAMS`, `PARSE_ERROR`, `UNKNOWN_ANALYSIS` and
+    `NOT_SUPPORTED`; 403 for `NOT_A_RESULT` and `FORBIDDEN_ORIGIN`; 404 for
+    `UNKNOWN_COMMAND`, `UNKNOWN_ENDPOINT`, `NOT_FOUND` and any code ending
+    in `_NOT_FOUND` (`TRACK_NOT_FOUND`, `FEATURE_NOT_FOUND`,
+    `CHROMOSOME_NOT_FOUND`, `GENE_NOT_FOUND`, `TAB_NOT_FOUND`); 405 for
+    `METHOD_NOT_ALLOWED`; 409 for `BUSY`, `LOADING`, `INVALID_STATE`,
     `NO_REFERENCE` and `NO_ANNOTATION`; 501 for `NOT_IMPLEMENTED`; 503 for
     `NOT_READY` and `NO_RENDER`; 504 for `TIMEOUT` and `STALLED`; 500 for
-    `OPERATION_FAILED`, `IO_ERROR`, `DEPENDENCY_MISSING`, `INTERNAL_ERROR`
-    and an error without a code.
+    `OPERATION_FAILED`, `IO_ERROR`, `WRITE_FAILED`, `DEPENDENCY_MISSING`,
+    `INTERNAL_ERROR` and an error without a code. Since 0.11.0 a report
+    command (`analysis_status`, `loading_status`, `demo_status`,
+    `recording_status`, `svg_export_status`) whose answer gives the
+    failure of its work as an `error` without a `code` (an analysis that
+    failed, say) answers 200: the status request itself succeeded.
 
     Each request gets its own answer. The window's answer is awaited for the
     API timeout (Settings > Appearance > Performance, 30 s by default); past
@@ -120,6 +164,10 @@ paths:
                 status: ok
                 app: VX
                 api_version: 2
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /state:
     get:
@@ -137,6 +185,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/NotReady"
         "504":
@@ -163,6 +215,8 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/NotReady"
         "504":
@@ -185,6 +239,8 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/NotReady"
         "504":
@@ -211,6 +267,8 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "503":
           $ref: "#/components/responses/NotReady"
         "504":
@@ -242,6 +300,8 @@ paths:
                 format: binary
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
@@ -276,6 +336,8 @@ paths:
                 $ref: "#/components/schemas/SuccessResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/ServerError"
         "503":
@@ -291,7 +353,7 @@ paths:
       description: |
         Single entry point for the majority of VX functionality. The
         request body is `{ "command": "<name>", "params": { ... } }`; the
-        55 commands are listed in this document's description.
+        91 commands are listed in this document's description.
 
         Every documented `RequestCommand_*` schema in `#/components` can
         be POSTed here verbatim; the `command` field is the discriminator.
@@ -310,6 +372,7 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_create_group"
                 - $ref: "#/components/schemas/RequestCommand_switch_group"
                 - $ref: "#/components/schemas/RequestCommand_remove_group"
+                - $ref: "#/components/schemas/RequestCommand_set_reference_mode"
                 - $ref: "#/components/schemas/RequestCommand_navigate"
                 - $ref: "#/components/schemas/RequestCommand_zoom"
                 - $ref: "#/components/schemas/RequestCommand_pan"
@@ -336,6 +399,11 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_set_signal_options"
                 - $ref: "#/components/schemas/RequestCommand_set_variant_options"
                 - $ref: "#/components/schemas/RequestCommand_set_interaction_options"
+                - $ref: "#/components/schemas/RequestCommand_set_coverage_options"
+                - $ref: "#/components/schemas/RequestCommand_set_sequence_options"
+                - $ref: "#/components/schemas/RequestCommand_set_track_options"
+                - $ref: "#/components/schemas/RequestCommand_set_gene_options"
+                - $ref: "#/components/schemas/RequestCommand_set_feature_options"
                 - $ref: "#/components/schemas/RequestCommand_set_alignment_options"
                 - $ref: "#/components/schemas/RequestCommand_add_aggregate_track"
                 - $ref: "#/components/schemas/RequestCommand_set_aggregate_options"
@@ -343,6 +411,10 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_add_dti_track"
                 - $ref: "#/components/schemas/RequestCommand_set_dti_options"
                 - $ref: "#/components/schemas/RequestCommand_dti_lookup"
+                - $ref: "#/components/schemas/RequestCommand_add_sashimi_track"
+                - $ref: "#/components/schemas/RequestCommand_set_sashimi_options"
+                - $ref: "#/components/schemas/RequestCommand_add_overlay_track"
+                - $ref: "#/components/schemas/RequestCommand_set_overlay_options"
                 - $ref: "#/components/schemas/RequestCommand_list_analyses"
                 - $ref: "#/components/schemas/RequestCommand_run_analysis"
                 - $ref: "#/components/schemas/RequestCommand_analysis_status"
@@ -356,6 +428,32 @@ paths:
                 - $ref: "#/components/schemas/RequestCommand_shutdown"
                 - $ref: "#/components/schemas/RequestCommand_load_demo"
                 - $ref: "#/components/schemas/RequestCommand_demo_status"
+                - $ref: "#/components/schemas/RequestCommand_known_features"
+                - $ref: "#/components/schemas/RequestCommand_known_features_status"
+                - $ref: "#/components/schemas/RequestCommand_close_known_features"
+                - $ref: "#/components/schemas/RequestCommand_export_known_features"
+                - $ref: "#/components/schemas/RequestCommand_set_known_features_options"
+                - $ref: "#/components/schemas/RequestCommand_edit_add_gene"
+                - $ref: "#/components/schemas/RequestCommand_edit_add_transcript"
+                - $ref: "#/components/schemas/RequestCommand_edit_add_exon"
+                - $ref: "#/components/schemas/RequestCommand_edit_add_feature"
+                - $ref: "#/components/schemas/RequestCommand_edit_move"
+                - $ref: "#/components/schemas/RequestCommand_edit_resize"
+                - $ref: "#/components/schemas/RequestCommand_edit_delete"
+                - $ref: "#/components/schemas/RequestCommand_edit_rename"
+                - $ref: "#/components/schemas/RequestCommand_edit_set_strand"
+                - $ref: "#/components/schemas/RequestCommand_edit_set_biotype"
+                - $ref: "#/components/schemas/RequestCommand_edit_insert_bases"
+                - $ref: "#/components/schemas/RequestCommand_edit_delete_bases"
+                - $ref: "#/components/schemas/RequestCommand_edit_replace_bases"
+                - $ref: "#/components/schemas/RequestCommand_edit_undo"
+                - $ref: "#/components/schemas/RequestCommand_edit_redo"
+                - $ref: "#/components/schemas/RequestCommand_edit_list"
+                - $ref: "#/components/schemas/RequestCommand_edit_write"
+                - $ref: "#/components/schemas/RequestCommand_edit_discard"
+                - $ref: "#/components/schemas/RequestCommand_open_circular_view"
+                - $ref: "#/components/schemas/RequestCommand_export_circular_view"
+                - $ref: "#/components/schemas/RequestCommand_dot_plot"
               discriminator:
                 propertyName: command
                 mapping:
@@ -368,6 +466,7 @@ paths:
                   create_group: "#/components/schemas/RequestCommand_create_group"
                   switch_group: "#/components/schemas/RequestCommand_switch_group"
                   remove_group: "#/components/schemas/RequestCommand_remove_group"
+                  set_reference_mode: "#/components/schemas/RequestCommand_set_reference_mode"
                   navigate: "#/components/schemas/RequestCommand_navigate"
                   zoom: "#/components/schemas/RequestCommand_zoom"
                   pan: "#/components/schemas/RequestCommand_pan"
@@ -394,6 +493,11 @@ paths:
                   set_signal_options: "#/components/schemas/RequestCommand_set_signal_options"
                   set_variant_options: "#/components/schemas/RequestCommand_set_variant_options"
                   set_interaction_options: "#/components/schemas/RequestCommand_set_interaction_options"
+                  set_coverage_options: "#/components/schemas/RequestCommand_set_coverage_options"
+                  set_sequence_options: "#/components/schemas/RequestCommand_set_sequence_options"
+                  set_track_options: "#/components/schemas/RequestCommand_set_track_options"
+                  set_gene_options: "#/components/schemas/RequestCommand_set_gene_options"
+                  set_feature_options: "#/components/schemas/RequestCommand_set_feature_options"
                   set_alignment_options: "#/components/schemas/RequestCommand_set_alignment_options"
                   add_aggregate_track: "#/components/schemas/RequestCommand_add_aggregate_track"
                   set_aggregate_options: "#/components/schemas/RequestCommand_set_aggregate_options"
@@ -401,6 +505,10 @@ paths:
                   add_dti_track: "#/components/schemas/RequestCommand_add_dti_track"
                   set_dti_options: "#/components/schemas/RequestCommand_set_dti_options"
                   dti_lookup: "#/components/schemas/RequestCommand_dti_lookup"
+                  add_sashimi_track: "#/components/schemas/RequestCommand_add_sashimi_track"
+                  set_sashimi_options: "#/components/schemas/RequestCommand_set_sashimi_options"
+                  add_overlay_track: "#/components/schemas/RequestCommand_add_overlay_track"
+                  set_overlay_options: "#/components/schemas/RequestCommand_set_overlay_options"
                   list_analyses: "#/components/schemas/RequestCommand_list_analyses"
                   run_analysis: "#/components/schemas/RequestCommand_run_analysis"
                   analysis_status: "#/components/schemas/RequestCommand_analysis_status"
@@ -414,6 +522,32 @@ paths:
                   shutdown: "#/components/schemas/RequestCommand_shutdown"
                   load_demo: "#/components/schemas/RequestCommand_load_demo"
                   demo_status: "#/components/schemas/RequestCommand_demo_status"
+                  known_features: "#/components/schemas/RequestCommand_known_features"
+                  known_features_status: "#/components/schemas/RequestCommand_known_features_status"
+                  close_known_features: "#/components/schemas/RequestCommand_close_known_features"
+                  export_known_features: "#/components/schemas/RequestCommand_export_known_features"
+                  set_known_features_options: "#/components/schemas/RequestCommand_set_known_features_options"
+                  edit_add_gene: "#/components/schemas/RequestCommand_edit_add_gene"
+                  edit_add_transcript: "#/components/schemas/RequestCommand_edit_add_transcript"
+                  edit_add_exon: "#/components/schemas/RequestCommand_edit_add_exon"
+                  edit_add_feature: "#/components/schemas/RequestCommand_edit_add_feature"
+                  edit_move: "#/components/schemas/RequestCommand_edit_move"
+                  edit_resize: "#/components/schemas/RequestCommand_edit_resize"
+                  edit_delete: "#/components/schemas/RequestCommand_edit_delete"
+                  edit_rename: "#/components/schemas/RequestCommand_edit_rename"
+                  edit_set_strand: "#/components/schemas/RequestCommand_edit_set_strand"
+                  edit_set_biotype: "#/components/schemas/RequestCommand_edit_set_biotype"
+                  edit_insert_bases: "#/components/schemas/RequestCommand_edit_insert_bases"
+                  edit_delete_bases: "#/components/schemas/RequestCommand_edit_delete_bases"
+                  edit_replace_bases: "#/components/schemas/RequestCommand_edit_replace_bases"
+                  edit_undo: "#/components/schemas/RequestCommand_edit_undo"
+                  edit_redo: "#/components/schemas/RequestCommand_edit_redo"
+                  edit_list: "#/components/schemas/RequestCommand_edit_list"
+                  edit_write: "#/components/schemas/RequestCommand_edit_write"
+                  edit_discard: "#/components/schemas/RequestCommand_edit_discard"
+                  open_circular_view: "#/components/schemas/RequestCommand_open_circular_view"
+                  export_circular_view: "#/components/schemas/RequestCommand_export_circular_view"
+                  dot_plot: "#/components/schemas/RequestCommand_dot_plot"
       responses:
         "200":
           description: |
@@ -428,6 +562,7 @@ paths:
                   - $ref: "#/components/schemas/SuccessResponse"
                   - $ref: "#/components/schemas/Response_navigate"
                   - $ref: "#/components/schemas/Response_zoom"
+                  - $ref: "#/components/schemas/Response_set_reference_mode"
                   - $ref: "#/components/schemas/Response_next_coverage_region"
                   - $ref: "#/components/schemas/Response_cancel_coverage_scan"
                   - $ref: "#/components/schemas/Response_get_sequence"
@@ -437,8 +572,14 @@ paths:
                   - $ref: "#/components/schemas/Response_export_region"
                   - $ref: "#/components/schemas/Response_export_image"
                   - $ref: "#/components/schemas/Response_list_chromosomes"
+                  - $ref: "#/components/schemas/Response_add_bookmark"
                   - $ref: "#/components/schemas/Response_list_bookmarks"
+                  - $ref: "#/components/schemas/Response_goto_bookmark"
                   - $ref: "#/components/schemas/Response_loading_status"
+                  - $ref: "#/components/schemas/Response_track_options"
+                  - $ref: "#/components/schemas/Response_add_track"
+                  - $ref: "#/components/schemas/Response_aggregate_rows"
+                  - $ref: "#/components/schemas/Response_list_analyses"
                   - $ref: "#/components/schemas/Response_run_analysis"
                   - $ref: "#/components/schemas/Response_analysis_status"
                   - $ref: "#/components/schemas/Response_read_result_rows"
@@ -447,6 +588,10 @@ paths:
                   - $ref: "#/components/schemas/Response_load_session"
                   - $ref: "#/components/schemas/Response_load_demo"
                   - $ref: "#/components/schemas/Response_demo_status"
+                  - $ref: "#/components/schemas/Response_known_features"
+                  - $ref: "#/components/schemas/Response_edit"
+                  - $ref: "#/components/schemas/Response_export_circular_view"
+                  - $ref: "#/components/schemas/Response_dot_plot"
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -491,16 +636,16 @@ components:
             error: "Required: chromosome, start, end (end > start)"
             code: INVALID_PARAMS
     Forbidden:
-      description: "A path read_result_rows does not read (NOT_A_RESULT)."
+      description: "A request sent by a page in a web browser (FORBIDDEN_ORIGIN, any path), or a path read_result_rows does not read (NOT_A_RESULT)."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorBody"
           example:
-            error: "Not a result of this viewer: /tmp/other.tsv"
-            code: NOT_A_RESULT
+            error: "Refused: the request carries an Origin header (http://example.org). The API takes requests from programs on this computer, not from pages in a web browser"
+            code: FORBIDDEN_ORIGIN
     NotFound:
-      description: "A name that is not there (UNKNOWN_COMMAND, UNKNOWN_ENDPOINT, NOT_FOUND)."
+      description: "A name that is not there (UNKNOWN_COMMAND, UNKNOWN_ENDPOINT, NOT_FOUND, or a code ending in _NOT_FOUND)."
       content:
         application/json:
           schema:
@@ -509,7 +654,7 @@ components:
             error: "Track not found: reads.bam"
             code: NOT_FOUND
     Conflict:
-      description: "A state the request conflicts with (BUSY, INVALID_STATE, NO_REFERENCE, NO_ANNOTATION)."
+      description: "A state the request conflicts with (BUSY, LOADING, INVALID_STATE, NO_REFERENCE, NO_ANNOTATION)."
       content:
         application/json:
           schema:
@@ -518,7 +663,7 @@ components:
             error: "An analysis is already running"
             code: INVALID_STATE
     ServerError:
-      description: "The operation was attempted and failed (OPERATION_FAILED, IO_ERROR, DEPENDENCY_MISSING, INTERNAL_ERROR, or no code)."
+      description: "The operation was attempted and failed (OPERATION_FAILED, IO_ERROR, WRITE_FAILED, DEPENDENCY_MISSING, INTERNAL_ERROR, or no code)."
       content:
         application/json:
           schema:
@@ -565,11 +710,18 @@ components:
             - UNKNOWN_ANALYSIS
             - NOT_SUPPORTED
             - NOT_A_RESULT
+            - FORBIDDEN_ORIGIN
             - UNKNOWN_COMMAND
             - UNKNOWN_ENDPOINT
             - NOT_FOUND
+            - TRACK_NOT_FOUND
+            - FEATURE_NOT_FOUND
+            - CHROMOSOME_NOT_FOUND
+            - GENE_NOT_FOUND
+            - TAB_NOT_FOUND
             - METHOD_NOT_ALLOWED
             - BUSY
+            - LOADING
             - INVALID_STATE
             - NO_REFERENCE
             - NO_ANNOTATION
@@ -580,6 +732,7 @@ components:
             - STALLED
             - OPERATION_FAILED
             - IO_ERROR
+            - WRITE_FAILED
             - DEPENDENCY_MISSING
             - INTERNAL_ERROR
         details:
@@ -601,6 +754,25 @@ components:
         app:    { type: string }
         api_version: { type: integer }
 
+    # ── Shared value shapes ────────────────────────────────────────
+    Colour:
+      type: array
+      description: "[r, g, b], each a whole number from 0 to 255."
+      minItems: 3
+      maxItems: 3
+      items: { type: integer, minimum: 0, maximum: 255 }
+
+    AxisScale:
+      type: string
+      description: The value axis's transform (log2 and log10 of 1 + the value).
+      enum: [linear, log2, log10, sqrt, asinh]
+
+    AxisBound:
+      type: number
+      minimum: -1000000000
+      maximum: 1000000000
+      description: An end of the manual range drawn while auto_scale is false. A range whose top is not above its bottom is refused by name.
+
     StateResponse:
       type: object
       properties:
@@ -617,26 +789,46 @@ components:
         trackCount: { type: integer }
         visibleTrackCount: { type: integer }
         hasReference: { type: boolean }
+        reference:
+          type: string
+          description: The active group's reference file, or "No reference" (since 0.11.0; each group in `groups` has it too).
+        referenceMode: { type: string, enum: [auto, genome, transcriptome], description: "Since 0.11.0." }
+        referenceKind: { type: string, enum: [none, genome, transcriptome], description: "What the reference is read as (since 0.11.0)." }
+        referenceWhy: { type: string, description: "Why it is read so (since 0.11.0)." }
+        cytobandChromosomes: { type: integer, description: "The chromosomes the group's band table covers; 0 for none yet (since 0.11.0)." }
         currentChromosomeLength: { type: integer }
         tracks:
           type: array
           items:
             type: object
             description: |
-              Every track has name, type, visible and height; a track of a
+              Every track has name, type, visible, height and, since 0.11.0,
+              `selected`, `style` (the keys of set_track_options) and
+              `options` (the keys of its type's set command; null for a type
+              whose options are under a key of their own). A track of a
               given kind also has its own entry: an interaction track
-              `interaction` (opacity, customOpacity) and, once TAD Boundary
-              Detection ran on it, `tadBoundaries`; a signal track `signal`
-              (source, window); a result track `result` (analysis,
-              analysisName, file, manifest, parameters); a feature track
-              `feature`; an alignment track `readLayout`, `totalMappedReads`,
-              `coverageReadTo` and `indegra`; a DTI track `dti`.
+              `interaction` (opacity, customOpacity), `matrix` (the Matrix
+              display) and, once TAD Boundary Detection ran on it,
+              `tadBoundaries`; a signal track `signal` (source, window); a
+              result track `result` (analysis, analysisName, file, manifest,
+              parameters, note); a feature track `feature` (with capListed,
+              capHeld and capNoun); an alignment track `readLayout`,
+              `totalMappedReads`, `coverageReadTo`, `indegra`, `strips` and
+              `callsMatrix`; a read aggregate track `aggregate` (and a variant
+              summary `variants`); a Sashimi track `sashimi`; an overlay
+              `overlay`; a DTI track `dti`. Each quantitative track has `axis`,
+              the axis the last frame drew (null before one), and an alignment
+              track `coverageAxis` for its coverage strip.
             properties:
               name:    { type: string }
               type:    { type: string }
               visible: { type: boolean }
               height:  { type: number }
+              selected: { type: boolean }
+              style: { type: object }
+              options: { type: [object, "null"] }
               interaction: { type: object }
+              matrix: { type: [object, "null"] }
               tadBoundaries: { type: object }
               signal: { type: [object, "null"] }
               result: { type: object }
@@ -647,7 +839,15 @@ components:
                 type: [integer, "null"]
                 description: The last base (1-based) whose depth the coverage strip read whole, when the view held more records than the read budget; null when the window was read whole.
               indegra: { type: object }
+              strips: { type: array, items: { type: object } }
+              callsMatrix: { type: [object, "null"] }
+              aggregate: { type: object }
+              variants: { type: object }
+              sashimi: { type: object }
+              overlay: { type: object }
               dti: { type: object }
+              axis: { type: [object, "null"] }
+              coverageAxis: { type: [object, "null"] }
         chromosomes:
           type: array
           items:
@@ -666,6 +866,17 @@ components:
               isActive:    { type: boolean }
               trackCount:  { type: integer }
               hasReference: { type: boolean }
+              reference:   { type: string }
+              referenceMode: { type: string }
+              referenceKind: { type: string }
+              referenceWhy: { type: string }
+              cytobandChromosomes: { type: integer }
+        bookmarkView: { type: string, enum: [all, group], description: "What the left panel's bookmark list shows (since 0.11.0)." }
+        magnifierLocked: { type: boolean, description: "Two quick presses of Alt keep the magnifier on (since 0.11.0)." }
+        edit: { type: object, description: "The active group's edit log: operations, position, can_undo, can_redo, edited_sequences, edited_tracks (since 0.11.0)." }
+        knownFeatures: { type: [object, "null"], description: "The Known Features pane: options, shown, tabs, active (since 0.11.0)." }
+        circularView: { type: [object, "null"], description: "The circular view while its window is open (since 0.11.0)." }
+        dotPlot: { type: [object, "null"], description: "The dot plot while its dialog is open (since 0.11.0)." }
         config:
           type: object
           properties:
@@ -674,7 +885,7 @@ components:
             showGrid:       { type: boolean }
             showLabels:     { type: boolean }
             darkMode:       { type: boolean }
-            trackHeight:    { type: number }
+            trackHeight:    { type: number, description: "The height set_config trackHeight gave for this run; 0 for none." }
             activeModeEnabled: { type: boolean }
             geneDetailView: { type: boolean }
             intronCollapseEnabled: { type: boolean }
@@ -731,6 +942,7 @@ components:
           type: object
 
     # ── Per-command request schemas ───────────────────────────────
+    # File loading
     RequestCommand_load_file:
       description: |
         Loads a file, its type by its extension (a `.gz` or `.bgz` file by
@@ -738,7 +950,9 @@ components:
         when the load starts now, or "Queued: <name> (position N)" with
         `queued` true and `position` when it waits behind another load.
         A file that is not there answers 404 `NOT_FOUND`; a `.bam` that is
-        not BGZF, or is cut short, is refused with the reason.
+        not BGZF, or is cut short, is refused with the reason. Since 0.11.0
+        a `.cool`, `.mcool` or `.hic` file is refused with 400
+        `NOT_SUPPORTED`, the answer saying to write the contacts as BEDPE.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -750,8 +964,9 @@ components:
               properties:
                 path:
                   type: string
-                  description: Absolute path to a FASTA / GTF / GFF / BAM / VCF / BED / bedGraph / Wiggle / BigWig / BigBed / BEDPE file, or an INDEGRA process table.
+                  description: Absolute path to a FASTA / GTF / GFF / BAM / SAM / VCF / BED / bedGraph / Wiggle / BigWig / BigBed / BEDPE file, an INDEGRA process table, or a .vxs session.
 
+    # Track management
     RequestCommand_set_track_visibility:
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
@@ -779,6 +994,7 @@ components:
                 height: { type: number, minimum: 10 }
 
     RequestCommand_set_track_scroll:
+      description: Scrolls a track's rows as the mouse wheel does. Since 0.11.0 the rows of a gene, feature or transcript DTI track as well as an alignment track's reads; another kind of track answers 400 NOT_SUPPORTED.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -788,8 +1004,8 @@ components:
               type: object
               required: [name, offset]
               properties:
-                name:   { type: string, description: "An alignment track's name (another kind of track answers NOT_SUPPORTED)." }
-                offset: { type: number, description: "Pixels from the top of the read rows; a negative value is read as 0." }
+                name:   { type: string, description: "An alignment, gene, feature or transcript DTI track's name." }
+                offset: { type: number, description: "Pixels from the top of the rows; a negative value is read as 0." }
 
     RequestCommand_remove_track:
       allOf:
@@ -816,6 +1032,7 @@ components:
                 name:     { type: string }
                 position: { type: integer, minimum: 0 }
 
+    # Group management
     RequestCommand_create_group:
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
@@ -829,6 +1046,7 @@ components:
                 name: { type: string }
 
     RequestCommand_switch_group:
+      description: Makes the group active and shows its first sequence, as the left panel's group selector does.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -852,6 +1070,29 @@ components:
               properties:
                 name: { type: string }
 
+    RequestCommand_set_reference_mode:
+      description: |
+        Since 0.11.0. Sets how a group's reference is read: `auto` (by the
+        sequences' names and lengths), `genome` or `transcriptome`. The
+        answer gives `group`, `mode`, `kind` (what the reference is now
+        read as) and `why`. Another word is 400 `INVALID_PARAMS`, a group
+        that is not there 404 `NOT_FOUND`, a group without a reference 409
+        `NO_REFERENCE`.
+      examples:
+        - { command: set_reference_mode, params: { mode: transcriptome } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_reference_mode }
+            params:
+              type: object
+              required: [mode]
+              properties:
+                mode:  { type: string, enum: [auto, genome, transcriptome], description: "Read whatever its letter case." }
+                group: { type: string, description: "The group's name; default, the active group." }
+
+    # Navigation
     RequestCommand_navigate:
       description: The chromosome may be any alias of the reference's name (chr1, 1); one that is not in the loaded reference answers 404 NOT_FOUND.
       allOf:
@@ -935,6 +1176,7 @@ components:
             command: { type: string, const: cancel_coverage_scan }
             params:  { type: object }
 
+    # Data queries
     RequestCommand_get_sequence:
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
@@ -949,6 +1191,7 @@ components:
                 end:        { type: integer, minimum: 1, description: "Default: the view's end. At most 100,000 bases a request (end - start)." }
 
     RequestCommand_get_genes:
+      description: The genes in the region. Since 0.11.0 a gene is its ID on one chromosome, so an ID on two chromosomes is two genes, and so is a gene line repeated on one chromosome that overlaps no gene line of its ID there (Liftoff's copies). `geneName` is the annotation's name and `displayName` the name the screens show, which tells such genes apart.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -973,8 +1216,9 @@ components:
               properties:
                 query:
                   type: string
-                  description: Case-insensitive partial match on gene name or ID. Up to 100 results.
+                  description: Case-insensitive partial match on gene name or ID. Up to 100 results; since 0.11.0 an ID on two chromosomes, or twice on one, is answered once for each gene.
 
+    # Config
     RequestCommand_set_config:
       description: |
         Changes only the keys given. A key set_config does not read is
@@ -1019,6 +1263,7 @@ components:
                 zoom:     { type: number, description: "Magnification, clamped to 1.5 to 10." }
                 genome_x: { type: integer, description: "A genomic position; takes priority over center_x." }
 
+    # Selection
     RequestCommand_select_region:
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
@@ -1038,7 +1283,9 @@ components:
       description: |
         Clicks the track area as the mouse would, in its pixels (0,0 at its
         top left, at the interface scale in force). Active Mode must be on
-        (`set_config` `activeModeEnabled`), else 503 `NOT_READY`.
+        (`set_config` `activeModeEnabled`), else 503 `NOT_READY`. Since
+        0.11.0 a click on the sequence track selects a base, a block of
+        bases or a window of the GC curve, and `popupText` gives its words.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1053,6 +1300,7 @@ components:
                 button: { type: integer, default: 1, description: "1 (left) selects; 3 (right) on a read not selected or a modification mark opens its information; any other number acts as 1." }
                 ctrl:   { type: boolean, default: false, description: "With button 1, add to the selection." }
 
+    # Export
     RequestCommand_export_region:
       description: |
         Writes the view's region. Nothing is written when there is nothing
@@ -1124,7 +1372,9 @@ components:
             command: { type: string, const: svg_export_status }
             params:  { type: object }
 
+    # Loading state
     RequestCommand_loading_status:
+      description: Since 0.11.0, while the built-in demo's files are made, a load in progress with stage "Preparing the built-in demo".
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1141,12 +1391,17 @@ components:
             command: { type: string, const: cancel_loading }
             params:  { type: object }
 
+    # Bookmarks
     RequestCommand_add_bookmark:
       description: |
         Bookmarks the region given, as `region` or as chromosome, start and
         end (0-based start, end exclusive, digits alone); one that does not
         read is refused by name (400 `INVALID_PARAMS`). Without a region,
         the view, once a reference is loaded (503 `NOT_READY` before).
+        Since 0.11.0 a bookmark belongs to a group: `group` names an open
+        group ("" for every group; another name is 404 `NOT_FOUND`); without
+        it, the group whose reference holds the region's chromosome, the
+        active group first. The answer names the group.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1161,14 +1416,19 @@ components:
                 chromosome: { type: string }
                 start:      { type: [integer, string] }
                 end:        { type: [integer, string] }
+                group:      { type: string, description: "Since 0.11.0: the bookmark's group, or an empty text for every group." }
 
     RequestCommand_list_bookmarks:
+      description: Each bookmark with its index, label, region and (since 0.11.0) group. `view` sets the left panel's list to This group or All and lists what it shows; the answer also gives `view` and `activeGroup`.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
           properties:
             command: { type: string, const: list_bookmarks }
-            params:  { type: object }
+            params:
+              type: object
+              properties:
+                view: { type: string, enum: [group, all], description: "Since 0.11.0. group: the active group's bookmarks and those of every group; all: every bookmark." }
 
     RequestCommand_remove_bookmark:
       allOf:
@@ -1183,6 +1443,7 @@ components:
                 index: { type: integer, minimum: 0 }
 
     RequestCommand_goto_bookmark:
+      description: Goes to the bookmark's region. Since 0.11.0 a bookmark of another open group switches to that group first; the answer gives `group` and `switched`.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1202,7 +1463,69 @@ components:
             command: { type: string, const: list_chromosomes }
             params:  { type: object }
 
+    # Track options. Each of these commands finds the track by `name` in the
+    # active group (404 NOT_FOUND), refuses a track of another kind (400
+    # NOT_SUPPORTED), and checks every key before anything changes: a key it
+    # does not read, a word not among its words, a switch that is not true or
+    # false, a number out of range or a colour that is not [r, g, b] is refused
+    # by name (400 INVALID_PARAMS).
+    RequestCommand_set_track_options:
+      description: Since 0.11.0. The common controls of every track's row in the track panel. The answer gives `style`.
+      examples:
+        - { command: set_track_options, params: { name: genes.gtf, label_size: 12, legend: false } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_track_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:       { type: string }
+                color:      { $ref: "#/components/schemas/Colour", description: "The label's colour (and a gene track's data in Uniform colouring, an alignment track's in Solid)." }
+                label_gap:  { type: number, minimum: 0, maximum: 30 }
+                label_size: { type: number, minimum: 0, maximum: 18, description: "Points; 0 automatic." }
+                legend:     { type: boolean }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_coverage_options:
+      description: Since 0.11.0. A coverage track's section of the track panel. The answer gives the track's `options`.
+      examples:
+        - { command: set_coverage_options, params: { name: coverage.bedgraph, style: bars, scale: log10, auto_scale: false, y_min: 0, y_max: 100 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_coverage_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:        { type: string }
+                style:       { type: string, enum: [area, line, bars, heatmap] }
+                scale:       { type: string, enum: [linear, log, log2, log10, sqrt, asinh], description: "log is read as log10." }
+                auto_scale:  { type: boolean }
+                y_min:       { $ref: "#/components/schemas/AxisBound" }
+                y_max:       { $ref: "#/components/schemas/AxisBound" }
+                color_mode:  { type: string, enum: [solid, heatmap] }
+                fill_color:  { $ref: "#/components/schemas/Colour" }
+                line_color:  { $ref: "#/components/schemas/Colour" }
+                line_width:  { type: number, minimum: 0.5, maximum: 10 }
+                fill_alpha:  { type: number, minimum: 0, maximum: 1 }
+                show_fill:   { type: boolean }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
     RequestCommand_set_signal_options:
+      description: |
+        A signal track's section of the track panel. Since 0.11.0 every key
+        is checked before anything changes and a key the command does not
+        read is refused; show_axis, the three colours and show_negative are
+        new.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1214,19 +1537,27 @@ components:
               properties:
                 name:             { type: string }
                 style:            { type: string, enum: [area, line, bars, heatmap, step, points] }
-                scale:            { type: string, enum: [linear, log2, log10, sqrt, asinh] }
-                y_min:            { type: number }
-                y_max:            { type: number }
+                scale:            { $ref: "#/components/schemas/AxisScale" }
                 auto_scale:       { type: boolean }
-                smoothing:        { type: number, minimum: 0 }
+                y_min:            { $ref: "#/components/schemas/AxisBound" }
+                y_max:            { $ref: "#/components/schemas/AxisBound" }
+                smoothing:        { type: number, minimum: 0, maximum: 1000000, description: "Bases." }
                 smoothing_method: { type: string, enum: [mean, median, max] }
                 color_mode:       { type: string, enum: [solid, gradient, diverging, heatmap] }
                 window_function:  { type: string, enum: [mean, max, min, sum, coverage] }
-                line_width:       { type: number, minimum: 0.5, maximum: 5.0 }
+                line_width:       { type: number, minimum: 0.5, maximum: 10 }
                 fill_alpha:       { type: number, minimum: 0.0, maximum: 1.0 }
+                show_axis:        { type: boolean }
+                fill_color:       { $ref: "#/components/schemas/Colour" }
+                line_color:       { $ref: "#/components/schemas/Colour" }
+                negative_color:   { $ref: "#/components/schemas/Colour" }
+                show_negative:    { type: boolean, default: true, description: "Show negative: true draws values below 0 below the zero line (in the Bars style in the negative colour); false draws a value below 0 at 0, and the axis keeps 0 at its foot." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     RequestCommand_set_variant_options:
-      description: A mode or a switch that is not one of those below is refused by name and nothing is changed.
+      description: A variant track's section of the track panel. Since 0.11.0 a key the command does not read is refused, and the stem height, marker size, opacity and the seven type colours are new.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1240,16 +1571,36 @@ components:
                 display_mode:     { type: string, enum: [lollipop, diamonds, bars, density] }
                 color_mode:       { type: string, enum: [type, quality, frequency, filter, impact, zygosity] }
                 filter_pass_only: { type: boolean }
-                min_quality:      { type: number }
-                min_allele_freq:  { type: number }
+                min_quality:      { type: number, minimum: 0 }
+                min_allele_freq:  { type: number, minimum: 0, maximum: 1 }
                 show_labels:      { type: boolean }
                 show_snps:        { type: boolean }
                 show_insertions:  { type: boolean }
                 show_deletions:   { type: boolean }
                 show_svs:         { type: boolean, description: "Structural and copy-number variants." }
                 show_other:       { type: boolean, description: "Multi-base substitutions and complex alleles." }
+                stem_height:      { type: number, minimum: 0.1, maximum: 1 }
+                marker_size:      { type: number, minimum: 2, maximum: 20, description: "The marker's radius in pixels." }
+                opacity:          { type: number, minimum: 0.1, maximum: 1 }
+                color_snp:        { $ref: "#/components/schemas/Colour" }
+                color_insertion:  { $ref: "#/components/schemas/Colour" }
+                color_deletion:   { $ref: "#/components/schemas/Colour" }
+                color_mnp:        { $ref: "#/components/schemas/Colour" }
+                color_sv:         { $ref: "#/components/schemas/Colour" }
+                color_cnv:        { $ref: "#/components/schemas/Colour" }
+                color_complex:    { $ref: "#/components/schemas/Colour" }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     RequestCommand_set_interaction_options:
+      description: |
+        An interaction track's section of the track panel. The answer gives
+        `interaction` (the opacity as drawn and whether it is the track's
+        own) and, since 0.11.0, `matrix` (the Matrix display's state). Since
+        0.11.0 a key the command does not read is refused, the three
+        colours, `min_distance` and the Matrix display (`display_mode`
+        matrix and the `matrix_*` keys) are new.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1259,22 +1610,142 @@ components:
               type: object
               required: [name]
               properties:
-                name:          { type: string }
-                display_mode:  { type: string, enum: [arcs, heatmap, links] }
-                color_mode:    { type: string, enum: [score, distance, solid] }
-                min_score:     { type: number }
-                intra_chr_only: { type: boolean }
-                arc_alpha:     { type: number, minimum: 0.0, maximum: 1.0, description: "The track's own opacity, kept on both colour schemes." }
-                line_width:    { type: number }
+                name:             { type: string }
+                display_mode:     { type: string, enum: [arcs, heatmap, links, matrix] }
+                color_mode:       { type: string, enum: [score, distance, solid] }
+                min_score:        { type: number, minimum: 0, maximum: 1000000000, description: "Min score: loops scored below it are not drawn (a loop without a score passes only a minimum of 0)." }
+                min_distance:     { type: integer, minimum: 0, maximum: 1000000000, default: 0, description: "Min distance: the least distance in whole bases between a loop's two anchors on one chromosome; closer loops are not drawn." }
+                intra_chr_only:   { type: boolean }
+                arc_alpha:        { type: number, minimum: 0.1, maximum: 1.0, description: "The track's own opacity, kept on both colour schemes." }
+                line_width:       { type: number, minimum: 0.5, maximum: 10 }
+                arc_color:        { $ref: "#/components/schemas/Colour", description: "The Solid mode's colour." }
+                low_score_color:  { $ref: "#/components/schemas/Colour", description: "Kept on both schemes; the high score colour stays as drawn." }
+                high_score_color: { $ref: "#/components/schemas/Colour" }
+                matrix_value:     { type: string, enum: [count, balanced, obs_exp], description: "Since 0.11.0." }
+                matrix_scale:     { type: string, enum: [linear, log] }
+                matrix_bin:       { type: integer, minimum: 0, maximum: 100000000, description: "Bases a bin; 0 follows the zoom." }
+                matrix_tads:      { type: boolean, description: "Outline the domains between TAD Boundary Detection's boundaries." }
+                matrix_loops:     { type: string, description: "An interaction track of the group whose loops are ringed; an empty text for none." }
+                matrix_filters:   { type: boolean, default: true, description: "Apply filters: true (the default) bins the contacts the track's Min score and Min distance keep (at their defaults, 0 and 0, every contact not scored below 0), as Contact Matrix does by default; false bins every contact." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_sequence_options:
+      description: Since 0.11.0. A sequence track's section of the track panel, with the value axis of its GC curve in percent. The answer gives the track's `options`.
+      examples:
+        - { command: set_sequence_options, params: { name: chr19.fa, show_gc: true, scale: linear, auto_scale: false, y_min: 30, y_max: 70 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_sequence_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:         { type: string }
+                show_bases:   { type: boolean }
+                show_gc:      { type: boolean }
+                color_scheme: { type: string, enum: [default, ncbi, sanger, colorblind] }
+                scale:        { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:   { type: boolean }
+                y_min:        { $ref: "#/components/schemas/AxisBound" }
+                y_max:        { $ref: "#/components/schemas/AxisBound" }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_gene_options:
+      description: Since 0.11.0. A gene track's section of the track panel. The answer gives the track's `options`.
+      examples:
+        - { command: set_gene_options, params: { name: genes.gtf, isoform_gap: 12, lane_height: 16, color_lncrna: [200, 40, 40] } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_gene_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:                 { type: string }
+                show_labels:          { type: boolean, description: "Every text the track draws on its body: names, detail labels, badges." }
+                color_mode:           { type: string, enum: [biotype, uniform] }
+                body_height:          { type: number, minimum: 6, maximum: 120 }
+                isoform_row_height:   { type: number, minimum: 0, maximum: 120, description: "0: the body height." }
+                isoform_gap:          { type: number, minimum: -1, maximum: 40, description: "-1: automatic." }
+                lane_height:          { type: number, minimum: 0, maximum: 60, description: "A transcript drawn in two lanes: each lane's height; 0 shares the isoform's row." }
+                lane_gap:             { type: number, minimum: -1, maximum: 60, description: "-1: automatic." }
+                intron_width:         { type: number, minimum: 0.5, maximum: 8 }
+                row_spacing:          { type: number, minimum: 0, maximum: 20 }
+                opacity:              { type: number, minimum: 0.1, maximum: 1 }
+                feature_label_size:   { type: number, minimum: 0, maximum: 18, description: "0: automatic." }
+                gene_name_size:       { type: number, minimum: 0, maximum: 18, description: "0: automatic." }
+                per_track_colours:    { type: boolean, description: "The biotype colours below are the track's own (true) or Settings' (false)." }
+                color_protein_coding: { $ref: "#/components/schemas/Colour" }
+                color_lncrna:         { $ref: "#/components/schemas/Colour" }
+                color_circrna:        { $ref: "#/components/schemas/Colour" }
+                color_trna:           { $ref: "#/components/schemas/Colour" }
+                color_rrna:           { $ref: "#/components/schemas/Colour" }
+                color_mirna:          { $ref: "#/components/schemas/Colour" }
+                color_snrna:          { $ref: "#/components/schemas/Colour" }
+                color_snorna:         { $ref: "#/components/schemas/Colour" }
+                color_pseudogene:     { $ref: "#/components/schemas/Colour" }
+                color_ig_tr:          { $ref: "#/components/schemas/Colour" }
+                color_misc_rna:       { $ref: "#/components/schemas/Colour" }
+                color_default:        { $ref: "#/components/schemas/Colour" }
+                lod_density_ppb:      { type: number, minimum: 0, maximum: 10, description: "Pixels a base; 0: Settings' threshold." }
+                lod_boundary_ppb:     { type: number, minimum: 0, maximum: 10 }
+                lod_feature_ppb:      { type: number, minimum: 0, maximum: 10 }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_feature_options:
+      description: Since 0.11.0. A feature track's section of the track panel (a junction track's Sashimi keys are set_sashimi_options', and are refused here naming it). The answer gives the track's `options`.
+      examples:
+        - { command: set_feature_options, params: { name: peaks.bed, box_height: 26, row_gap: 9, feature_colour: [70, 110, 160] } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_feature_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name:           { type: string }
+                show_labels:    { type: boolean }
+                box_height:     { type: number, minimum: 4, maximum: 60, description: "The boxes' height in pixels (18 for a new track)." }
+                row_gap:        { type: number, minimum: 0, maximum: 40 }
+                corner_radius:  { type: number, minimum: 0, maximum: 20 }
+                opacity:        { type: number, minimum: 0.1, maximum: 1 }
+                feature_colour: { $ref: "#/components/schemas/Colour", description: "Every feature of the track in this colour, on both schemes." }
+                custom_colour:  { type: boolean, description: "false gives the file's or the scheme's colours back." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     RequestCommand_set_alignment_options:
       description: |
-        BAM alignment-track display options. Many fields exist: see the
-        full list in the MCP server's `vx_set_alignment_options` signature.
-        Only fields the client wants to change need be provided. A value of
-        the wrong kind or out of range refuses the request and names its
-        key, before anything changes; the answer's `options` holds every
-        option of the track (send the name alone to read them).
+        An alignment track's options. Only the keys the client wants to
+        change need be given; the answer's `options` holds every option of
+        the track (send the name alone to read them). A key the command
+        does not read is passed over; a value of the wrong kind or out of
+        range, for the keys the list below gives with a range or words, is
+        refused by name before anything changes. The keys new in 0.11.0:
+        the strips' heights, expansions and views (`mod_strip`,
+        `polya_strip`, `mutation_strip`: objects of set_aggregate_options'
+        keys, a strip's `min_mapq` refused), `open_strip_as_track`,
+        `reads_are_rna`, `mod_colours`, the calls matrix (`display_mode`
+        calls_matrix and the `matrix_*` keys), the keys by a site
+        (`group_by_site`, `sort_by_site`), and the coverage strip's value
+        axis (`coverage_scale`, `coverage_auto_scale`, `coverage_y_min`,
+        `coverage_y_max`). The four rate-line colour keys of 0.10.0
+        (`mut_agg_total_line_color`, `mut_agg_sub_line_color`,
+        `mut_agg_del_line_color`, `mut_agg_ins_line_color`) are refused by
+        name: nothing draws them.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1285,37 +1756,89 @@ components:
               required: [name]
               additionalProperties: true
               properties:
-                name:                { type: string }
-                show_unique_primary:   { type: boolean }
-                show_multi_primary:    { type: boolean }
-                show_multi_secondary:  { type: boolean }
-                show_mate_pairs:       { type: boolean }
-                show_back_splice:      { type: boolean }
-                density:               { type: string, description: "auto, or a fixed level (1 to 4)." }
-                read_color_mode:       { type: string, description: "class (any other text reads as class), strand, insert_size, solid, mapq or indegra." }
-                show_trans_splice:     { type: boolean }
+                name:                     { type: string }
+                show_unique_primary:      { type: boolean }
+                show_multi_primary:       { type: boolean }
+                show_multi_secondary:     { type: boolean }
+                show_mate_pairs:          { type: boolean }
+                show_back_splice:         { type: boolean }
+                density:                  { type: string, description: "auto, or a fixed level (1 to 4)." }
+                display_mode:             { type: string, enum: [reads, calls_matrix], description: "Since 0.11.0: the reads, or the calls matrix (a row a read, a column a modified site)." }
+                matrix_codes:             { type: [string, array], items: { type: string }, description: "Since 0.11.0: a modification's code, a list of codes, or all." }
+                matrix_cells:             { type: string, enum: [probability, class], description: "Since 0.11.0." }
+                matrix_min_modified:      { type: integer, minimum: 1, maximum: 100000, description: "Since 0.11.0: the reads a site needs called modified (2 by default)." }
+                read_color_mode:          { type: string, description: "class (any other text reads as class), strand, insert_size, solid, mapq or indegra." }
+                show_trans_splice:        { type: boolean }
                 show_paired_as_fragments: { type: boolean }
-                sort_by:               { type: string, enum: [start, end, length, ref_length, edit_extent, mod_extent, mapq, strand] }
-                sort_order:            { type: string, enum: [ascending, descending] }
-                group_by:              { type: string, enum: [none, type, strand, haplotype, indegra, class] }
-                packing:               { type: string, enum: [dense, one_per_row] }
-                mod_extent_unit:       { type: string, enum: [per_read, per_base] }
-                filter_indegra:        { type: string, enum: [all, hide_reallocated, reallocated_only] }
-                read_sort_mode:        { type: string, enum: [start_pos, end_pos, length] }
+                sort_by:                  { type: string, enum: [start, end, length, ref_length, edit_extent, mod_extent, mapq, strand, base_at, call_probability_at], description: "base_at and call_probability_at (since 0.11.0) need sort_by_site." }
+                sort_order:               { type: string, enum: [ascending, descending] }
+                group_by:                 { type: string, enum: [none, type, strand, haplotype, indegra, class, base_at, call_at], description: "base_at and call_at (since 0.11.0) need group_by_site." }
+                group_by_site:            { $ref: "#/components/schemas/LayoutSite" }
+                sort_by_site:             { $ref: "#/components/schemas/LayoutSite" }
+                packing:                  { type: string, enum: [dense, one_per_row] }
+                mod_extent_unit:          { type: string, enum: [per_read, per_base] }
+                filter_indegra:           { type: string, enum: [all, hide_reallocated, reallocated_only] }
+                read_sort_mode:           { type: string, enum: [start_pos, end_pos, length] }
                 segregate_reads_by_class: { type: boolean }
-                show_base_modifications: { type: boolean }
-                show_mod_summary_strip: { type: boolean }
-                mod_prob_threshold:    { type: integer, minimum: 0, maximum: 255 }
-                show_polya_tail:       { type: boolean }
-                show_mod_aggregator:   { type: boolean }
-                show_polya_aggregator: { type: boolean }
+                show_base_modifications:  { type: boolean }
+                show_mod_summary_strip:   { type: boolean }
+                mod_prob_threshold:       { type: integer, minimum: 0, maximum: 255, description: "The ML value; 128 is a probability of 0.5." }
+                mod_colours:              { type: object, description: "Since 0.11.0: {modification code: [r, g, b] or null}; null gives the code back to the palette.", additionalProperties: { oneOf: [ { $ref: "#/components/schemas/Colour" }, { type: "null" } ] } }
+                reads_are_rna:            { oneOf: [ { type: boolean }, { type: string, enum: [auto] } ], description: "Since 0.11.0: the modifications named in RNA words (true), DNA words (false), or as the reads' basecall model and references say (auto)." }
+                show_polya_tail:          { type: boolean }
+                show_mod_aggregator:      { type: boolean }
+                show_polya_aggregator:    { type: boolean }
                 show_mutation_aggregator: { type: boolean }
-                max_reads:             { type: integer, minimum: 0, maximum: 1000000, description: "Reads kept in view when subsampling is on (0: no cap); the view loads again." }
-                subsetting:            { type: boolean }
-                min_mapq:              { type: integer, minimum: 0, maximum: 255 }
+                strip_height:             { type: number, minimum: 16, maximum: 200, description: "Since 0.11.0: the strips' compact height (32 by default)." }
+                strip_expanded_height:    { type: number, minimum: 24, maximum: 600, description: "Since 0.11.0: the strips' expanded height (120 by default)." }
+                mod_strip_height:         { oneOf: [ { const: 0 }, { type: number, minimum: 16, maximum: 200 } ], description: "Since 0.11.0: 0 (the shared strip_height) or 16 to 200." }
+                polya_strip_height:       { oneOf: [ { const: 0 }, { type: number, minimum: 16, maximum: 200 } ], description: "Since 0.11.0: 0 (the shared strip_height) or 16 to 200." }
+                mutation_strip_height:    { oneOf: [ { const: 0 }, { type: number, minimum: 16, maximum: 200 } ], description: "Since 0.11.0: 0 (the shared strip_height) or 16 to 200." }
+                mod_strip_expanded_height:      { oneOf: [ { const: 0 }, { type: number, minimum: 24, maximum: 600 } ], description: "Since 0.11.0: 0 (the shared strip_expanded_height) or 24 to 600." }
+                polya_strip_expanded_height:    { oneOf: [ { const: 0 }, { type: number, minimum: 24, maximum: 600 } ], description: "Since 0.11.0: 0 (the shared strip_expanded_height) or 24 to 600." }
+                mutation_strip_expanded_height: { oneOf: [ { const: 0 }, { type: number, minimum: 24, maximum: 600 } ], description: "Since 0.11.0: 0 (the shared strip_expanded_height) or 24 to 600." }
+                expand_mod_strip:         { type: boolean }
+                expand_polya_strip:       { type: boolean }
+                expand_mutation_strip:    { type: boolean }
+                mod_strip:                { type: object, description: "Since 0.11.0: the modification strip's options, set_aggregate_options' keys of a modification density track." }
+                polya_strip:              { type: object, description: "Since 0.11.0: the poly(A) strip's options, set_aggregate_options' keys of a poly(A) tail track." }
+                mutation_strip:           { type: object, description: "Since 0.11.0: the mutation strip's options, set_aggregate_options' keys of a variant summary." }
+                open_strip_as_track:      { type: string, description: "Since 0.11.0: modifications, polya or mutation, or one lane of a strip (modifications:a, mutation:A>G, mutation:substitution), opened as an aggregate track below this one with the strip's options; the answer names it in opened_track." }
+                coverage_scale:           { $ref: "#/components/schemas/AxisScale" }
+                coverage_auto_scale:      { type: boolean }
+                coverage_y_min:           { $ref: "#/components/schemas/AxisBound" }
+                coverage_y_max:           { $ref: "#/components/schemas/AxisBound" }
+                coverage_log_scale:       { type: boolean, description: "The Log switch of 0.10.0: log10 (true) or linear, read when coverage_scale is not given." }
+                max_reads:                { type: integer, minimum: 0, maximum: 1000000, description: "Reads kept in view when subsampling is on (0: no cap); the view loads again." }
+                subsetting:               { type: boolean }
+                min_mapq:                 { type: integer, minimum: 0, maximum: 255 }
 
+    LayoutSite:
+      description: "A site the reads are grouped or sorted by (since 0.11.0); null or none clears the key."
+      oneOf:
+        - type: "null"
+        - type: string
+          enum: [none]
+        - type: object
+          required: [by, chromosome, position]
+          properties:
+            by:             { type: string, enum: [base, call, call_probability], description: "group_by_site: base or call; sort_by_site: base or call_probability." }
+            chromosome:     { type: string }
+            position:       { type: integer, minimum: 1, description: "1-based." }
+            code:           { type: string, description: "A modification's code: a letter or a ChEBI number." }
+            reference_base: { type: string, enum: [A, C, G, T, N, ""] }
+
+    # Read aggregates and transcript DTI
     RequestCommand_add_aggregate_track:
-      description: Adds a modification density or poly(A) tail track over an alignment track's BAM, below it; any option of set_aggregate_options may be given too. The answer names the new track.
+      description: |
+        Adds a modification density, poly(A) tail or (since 0.11.0)
+        variant summary track over an alignment track's BAM, below it in
+        the source's group; any option of set_aggregate_options may be
+        given too, and an option refused adds no track. The answer names
+        the new track and its group, and carries a `warning` when
+        `min_alt_per_strand` is set on RNA reads.
+      examples:
+        - { command: add_aggregate_track, params: { source: reads.bam, kind: variants, test: fisher, control: ivt.bam } }
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1324,22 +1847,97 @@ components:
             params:
               type: object
               required: [source, kind]
-              additionalProperties: true
               properties:
                 source: { type: string, description: "The alignment track's name." }
-                kind:   { type: string, enum: [modifications, polya] }
+                kind:   { type: string, enum: [modifications, polya, variants] }
+                min_mapq:        { type: integer, minimum: 0, maximum: 255 }
+                max_span:        { type: integer, minimum: 1, description: "Count up to: a view wider than this many bases is not counted. A modification density or poly(A) track: up to 100,000,000 (2,000,000 by default); a variant summary or an alignment track's mutation strip: 5,000,000 by default. A session keeps each track's own." }
+                colour:          { $ref: "#/components/schemas/Colour" }
+                scale:           { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:      { type: boolean }
+                y_min:           { type: number }
+                y_max:           { type: number }
+                display:         { type: string, enum: [bars, line, heat, dots, box, histogram, violin] }
+                height:          { type: string, enum: [stoichiometry, modified, calls, coverage, confidence, alt_fraction, alt_count, depth] }
+                opacity:         { type: string, enum: [confidence, stoichiometry, significance, none] }
+                opacity_floor:   { type: number, minimum: 0, maximum: 1 }
+                colour_mode:     { type: string, enum: [by_type, single] }
+                code_colours:    { type: [object, "null"], description: "{code: [r, g, b] or null}; null clears every colour of the user's." }
+                call_cutoff:     { type: number, minimum: 0.5, maximum: 0.99 }
+                min_coverage:    { type: integer, minimum: 1, maximum: 100000 }
+                strand:          { type: string, enum: [both, plus, minus, "+", "-"] }
+                resolution:      { type: string, enum: [site, window, bins, auto, automatic] }
+                width:           { type: integer, minimum: 1, maximum: 100000, description: "A window's or a bin's width in nt." }
+                pixel_rule:      { type: string, enum: [largest, mean] }
+                test:            { type: string, enum: [binomial, fisher] }
+                background:      { type: number, minimum: 0.0001, maximum: 0.5 }
+                control:         { type: [string, "null"], description: "An alignment track of the group that reads a BAM; an empty text for none." }
+                significance:    { type: string, enum: [p, q] }
+                significance_cutoff: { type: number, exclusiveMinimum: 0, maximum: 1 }
+                significance_saturation: { type: number, minimum: 1, maximum: 300 }
+                failed_sites:    { type: string, enum: [faint, hidden] }
+                lift_from:       { type: [string, array, "null"], items: { type: string }, description: "gene, a transcript's name, or a list of names: the isoforms whose reads' calls are counted on the transcript in view." }
+                failing_opacity: { type: number, minimum: 0, maximum: 1 }
+                split:           { type: string, enum: [none, code, class, kind] }
+                codes:           { type: [string, array, "null"], items: { type: string }, description: "The modifications drawn: a list of codes or a comma-separated text; empty, all or null for every code." }
+                statistic:       { type: string, enum: [median, mean] }
+                anchor:          { type: string, enum: [three_prime, right_end] }
+                bin_width:       { type: integer, minimum: 0, maximum: 10000000, description: "Bases; 0 automatic." }
+                min_reads:       { type: integer, minimum: 1, maximum: 100000 }
+                min_length:      { type: integer, minimum: 0, maximum: 100000 }
+                max_length:      { type: integer, minimum: 0, maximum: 100000 }
+                tail_bins:       { type: string, enum: [bins, sequence] }
+                cutoff_on:       { type: string, enum: [p, q] }
+                cutoff:          { type: number, exclusiveMinimum: 0, maximum: 1 }
+                opaque_at:       { type: number, exclusiveMinimum: 0, maximum: 1 }
+                failing:         { type: string, enum: [faint, hidden] }
+                min_base_quality: { type: integer, minimum: 0, maximum: 60 }
+                min_depth:       { type: integer, minimum: 1 }
+                min_alt_fraction: { type: number, minimum: 0, maximum: 1 }
+                min_alt_reads:   { type: integer, minimum: 1 }
+                changes:         { type: string, description: "all, substitutions, or a list such as A>G,T>C." }
+                error_model:     { type: string, enum: [qualities, fixed] }
+                error_rate:      { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+                vcf_track:       { type: string, description: "A variant track of the group, or an empty text." }
+                colours:         { type: object, description: "{A, C, G, T, deletion, insertion: [r, g, b]}." }
+                min_alt_per_strand: { type: integer, minimum: 0, description: "Min alt reads a strand: 0 (off) by default; 2 suggested. A site is judged only where its reads of the reference base number at least this many on each strand, and there it lists only when its main change (the change with the most reads) has as many reads on each strand; a site whose reference base has fewer reads on a strand is not judged and lists, so reads that all lie on one strand, as direct RNA reads do, lose no site." }
+              additionalProperties: false
 
     RequestCommand_set_aggregate_options:
       description: |
-        Modifications: display (bars, line, heat), height (stoichiometry,
-        modified, calls, confidence), opacity (confidence, stoichiometry,
-        none), opacity_floor (0 to 1), colour_mode (by_type, single),
-        colour ([r, g, b]), code_colours ({code: [r, g, b]}), threshold
-        (0 to 255), min_coverage, strand (both, plus, minus). Poly(A):
-        display (bars, box, violin), statistic (median, mean), anchor
-        (three_prime, right_end), bin_width (0: automatic), y_max (0:
-        automatic), min_reads, colour. Both: min_mapq, max_span. A bad
-        value is refused by name.
+        The options of a read aggregate track (found in any group), all or
+        nothing; the answer gives the options as they stand.
+        add_aggregate_track reads the same keys. Each kind reads its own keys and
+        refuses another kind's by name; every key is checked before any is
+        applied. Every kind: `min_mapq`, `max_span`, and the height's value
+        axis `scale`, `auto_scale`, `y_min`, `y_max` (since 0.11.0; a
+        `y_min` or a `y_max` alone makes the axis manual, a `y_max` of 0
+        alone keeps it fitted). A modification density track and a poly(A)
+        tail track also read `colour`. A modification density track
+        refuses 0.10.0's `threshold`, replaced by `call_cutoff`. A
+        modification density track:
+        display (bars, line, heat, dots, box, histogram, violin), height
+        (stoichiometry, modified, calls, confidence), opacity (confidence,
+        stoichiometry, significance, none), opacity_floor, colour_mode
+        (by_type, single), code_colours, call_cutoff, min_coverage, strand,
+        resolution, width, pixel_rule, test (binomial, fisher), background,
+        control, significance, significance_cutoff,
+        significance_saturation, failed_sites, lift_from (since 0.11.0),
+        failing_opacity, split (none, code) and codes (since 0.11.0). A
+        poly(A) tail track: display (bars, box, violin, dots), statistic,
+        anchor, bin_width, min_reads, min_length, max_length, tail_bins. A
+        variant summary (since 0.11.0): display (bars, line, heat), height
+        (alt_fraction, alt_count, depth), opacity (significance, none),
+        opacity_floor, cutoff_on, cutoff, opaque_at, failing,
+        min_base_quality, min_depth, min_alt_fraction, min_alt_reads,
+        changes, error_model, error_rate, vcf_track, colours,
+        min_alt_per_strand, test (binomial, fisher), control,
+        failing_opacity, split (none, class, kind). A variant summary's
+        `control` that the group lacks is 404 `TRACK_NOT_FOUND`; any other
+        refusal (a modification density's unknown control included) is 400
+        `INVALID_PARAMS`.
+      examples:
+        - { command: set_aggregate_options, params: { name: "reads.bam mod density", split: code, scale: linear, auto_scale: true } }
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1348,12 +1946,74 @@ components:
             params:
               type: object
               required: [name]
-              additionalProperties: true
               properties:
                 name: { type: string }
+                min_mapq:        { type: integer, minimum: 0, maximum: 255 }
+                max_span:        { type: integer, minimum: 1, description: "Count up to: a view wider than this many bases is not counted. A modification density or poly(A) track: up to 100,000,000 (2,000,000 by default); a variant summary or an alignment track's mutation strip: 5,000,000 by default. A session keeps each track's own." }
+                colour:          { $ref: "#/components/schemas/Colour" }
+                scale:           { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:      { type: boolean }
+                y_min:           { type: number }
+                y_max:           { type: number }
+                display:         { type: string, enum: [bars, line, heat, dots, box, histogram, violin] }
+                height:          { type: string, enum: [stoichiometry, modified, calls, coverage, confidence, alt_fraction, alt_count, depth] }
+                opacity:         { type: string, enum: [confidence, stoichiometry, significance, none] }
+                opacity_floor:   { type: number, minimum: 0, maximum: 1 }
+                colour_mode:     { type: string, enum: [by_type, single] }
+                code_colours:    { type: [object, "null"], description: "{code: [r, g, b] or null}; null clears every colour of the user's." }
+                call_cutoff:     { type: number, minimum: 0.5, maximum: 0.99 }
+                min_coverage:    { type: integer, minimum: 1, maximum: 100000 }
+                strand:          { type: string, enum: [both, plus, minus, "+", "-"] }
+                resolution:      { type: string, enum: [site, window, bins, auto, automatic] }
+                width:           { type: integer, minimum: 1, maximum: 100000, description: "A window's or a bin's width in nt." }
+                pixel_rule:      { type: string, enum: [largest, mean] }
+                test:            { type: string, enum: [binomial, fisher] }
+                background:      { type: number, minimum: 0.0001, maximum: 0.5 }
+                control:         { type: [string, "null"], description: "An alignment track of the group that reads a BAM; an empty text for none." }
+                significance:    { type: string, enum: [p, q] }
+                significance_cutoff: { type: number, exclusiveMinimum: 0, maximum: 1 }
+                significance_saturation: { type: number, minimum: 1, maximum: 300 }
+                failed_sites:    { type: string, enum: [faint, hidden] }
+                lift_from:       { type: [string, array, "null"], items: { type: string }, description: "gene, a transcript's name, or a list of names: the isoforms whose reads' calls are counted on the transcript in view." }
+                failing_opacity: { type: number, minimum: 0, maximum: 1 }
+                split:           { type: string, enum: [none, code, class, kind] }
+                codes:           { type: [string, array, "null"], items: { type: string }, description: "The modifications drawn: a list of codes or a comma-separated text; empty, all or null for every code." }
+                statistic:       { type: string, enum: [median, mean] }
+                anchor:          { type: string, enum: [three_prime, right_end] }
+                bin_width:       { type: integer, minimum: 0, maximum: 10000000, description: "Bases; 0 automatic." }
+                min_reads:       { type: integer, minimum: 1, maximum: 100000 }
+                min_length:      { type: integer, minimum: 0, maximum: 100000 }
+                max_length:      { type: integer, minimum: 0, maximum: 100000 }
+                tail_bins:       { type: string, enum: [bins, sequence] }
+                cutoff_on:       { type: string, enum: [p, q] }
+                cutoff:          { type: number, exclusiveMinimum: 0, maximum: 1 }
+                opaque_at:       { type: number, exclusiveMinimum: 0, maximum: 1 }
+                failing:         { type: string, enum: [faint, hidden] }
+                min_base_quality: { type: integer, minimum: 0, maximum: 60 }
+                min_depth:       { type: integer, minimum: 1 }
+                min_alt_fraction: { type: number, minimum: 0, maximum: 1 }
+                min_alt_reads:   { type: integer, minimum: 1 }
+                changes:         { type: string, description: "all, substitutions, or a list such as A>G,T>C." }
+                error_model:     { type: string, enum: [qualities, fixed] }
+                error_rate:      { type: number, exclusiveMinimum: 0, exclusiveMaximum: 1 }
+                vcf_track:       { type: string, description: "A variant track of the group, or an empty text." }
+                colours:         { type: object, description: "{A, C, G, T, deletion, insertion: [r, g, b]}." }
+                min_alt_per_strand: { type: integer, minimum: 0, description: "Min alt reads a strand: 0 (off) by default; 2 suggested. A site is judged only where its reads of the reference base number at least this many on each strand, and there it lists only when its main change (the change with the most reads) has as many reads on each strand; a site whose reference base has fewer reads on a strand is not judged and lists, so reads that all lie on one strand, as direct RNA reads do, lose no site." }
+              additionalProperties: false
 
     RequestCommand_aggregate_rows:
-      description: The rows an aggregate track gives the region [start, end), counted now with its options; a region wider than the track's max_span is refused.
+      description: |
+        The rows an aggregate track gives the region [start, end), counted
+        on a thread of their own with the track's options; the answer comes
+        when they are counted. A region wider than the track's max_span is
+        refused. With `path` the rows are written there (TSV by default, or
+        bedMethyl for a modification density: every site with a modified or
+        unmodified call) and the answer says how many. A variant summary's
+        answer gives what its q is over (`q_over`), the test in words
+        (`test`), what the strand rule did (`strand_rule`; `strand_filtered`,
+        the sites it left out; `strand_unjudged`, the sites listed that it
+        could not judge) and the control (`control`); /state gives the same
+        under the track's `variants`.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1367,7 +2027,11 @@ components:
                 chromosome: { type: string, description: "Default: the chromosome in view." }
                 start:      { type: integer, minimum: 0, description: "Default: the view's start." }
                 end:        { type: integer, description: "Default: the view's end; exclusive." }
-                bin_width:  { type: integer, minimum: 1, description: "Default: 1 for modifications; the track's own, else 100, for poly(A)." }
+                bin_width:  { type: integer, minimum: 1, description: "A modification density: 1 a site, more bins of that width; a poly(A) track: bases a bin (its own, else 100)." }
+                resolution: { type: string, enum: [site, window, bins, auto, automatic], description: "A modification density only; auto is read as site." }
+                width:      { type: integer, minimum: 1, maximum: 100000, description: "A modification density only: a window's or a bin's width." }
+                path:       { type: string, description: "Write the rows to this file instead of answering them." }
+                format:     { type: string, enum: [json, tsv, bedmethyl], description: "json (the answer, without path), tsv or bedmethyl (with path; bedmethyl for a modification density). A variant summary writes tsv." }
 
     RequestCommand_add_dti_track:
       description: Adds a transcript DTI track, from an alignment track's YD tags (source) or from INDEGRA's process table (path, recognised by its header line).
@@ -1383,6 +2047,7 @@ components:
                 path:   { type: string }
 
     RequestCommand_set_dti_options:
+      description: A transcript DTI track's options, every key checked before anything changes; since 0.11.0 the colour ramp's value axis (`scale`, `auto_scale`, `y_min`, `y_max`; Auto fits the table's DTI) and a key the command does not read is refused. The answer gives `dti`.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1393,10 +2058,18 @@ components:
               required: [name]
               properties:
                 name:         { type: string }
-                colour_scale: { type: string, enum: [sequential, diverging], description: "color_scale is read too." }
-                value_min:    { type: number, minimum: 0, maximum: 20 }
-                value_max:    { type: number, minimum: 0, maximum: 20 }
+                colour_scale: { type: string, enum: [sequential, diverging] }
+                color_scale:  { type: string, enum: [sequential, diverging] }
+                value_min:    { type: number, minimum: 0, maximum: 20, description: "The range's name of before: read as y_min where y_min is not given." }
+                value_max:    { type: number, minimum: 0, maximum: 20, description: "Read as y_max where y_max is not given." }
                 labels:       { type: boolean }
+                scale:        { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:   { type: boolean }
+                y_min:        { $ref: "#/components/schemas/AxisBound" }
+                y_max:        { $ref: "#/components/schemas/AxisBound" }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     RequestCommand_dti_lookup:
       allOf:
@@ -1411,7 +2084,158 @@ components:
                 name:       { type: string }
                 transcript: { type: string, description: "A transcript ID, with or without its version." }
 
+    # Sashimi and overlay tracks (since 0.11.0)
+    RequestCommand_add_sashimi_track:
+      description: Since 0.11.0. A Sashimi track over the BAM of the alignment track `source` (found in any group, the active one first), added below it in its group; any key of set_sashimi_options may be given, and one refused adds nothing. The answer names the track and its group and gives its options.
+      examples:
+        - { command: add_sashimi_track, params: { source: reads.bam, min_count: 5, hide_spanning: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: add_sashimi_track }
+            params:
+              type: object
+              required: [source]
+              properties:
+                source: { type: string, description: "The alignment track's name." }
+                min_mapq:              { type: integer, minimum: 0, maximum: 255 }
+                min_overhang:          { type: integer, minimum: 1, maximum: 10000 }
+                include_supplementary: { type: boolean }
+                max_span:              { type: integer, minimum: 1000, maximum: 10000000, description: "Count up to: a wider view is not counted (2,000,000 bases by default)." }
+                min_count:             { type: integer, minimum: 1, maximum: 1000000000, description: "Least reads: junctions below it are not drawn." }
+                arc_scale:             { type: string, enum: [height, width] }
+                shared_scale:          { type: boolean }
+                show_counts:           { type: boolean }
+                show_profile:          { type: boolean }
+                profile_color:         { $ref: "#/components/schemas/Colour" }
+                profile_opacity:       { type: number, minimum: 0, maximum: 1 }
+                line_width:            { type: number, minimum: 0.5, maximum: 10 }
+                scale:                 { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:            { type: boolean }
+                y_min:                 { $ref: "#/components/schemas/AxisBound" }
+                y_max:                 { $ref: "#/components/schemas/AxisBound" }
+                hide_spanning:         { type: boolean, description: "Leave out the junctions whose two ends lie either side of the view." }
+                display:               { type: string, enum: [features, sashimi], description: "A junction track only." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_sashimi_options:
+      description: |
+        Since 0.11.0. A Sashimi track's options, or a junction track's
+        Sashimi display, all or nothing; the answer gives the options as
+        they stand. On a Sashimi track min_mapq, min_overhang,
+        include_supplementary and max_span count the window again when they
+        change; the others change the drawing. On a junction track (the result of Splice
+        Junctions) set_sashimi_options reads display, min_count, arc_scale,
+        show_counts and hide_spanning alone, and refuses a Sashimi track's
+        other keys by name.
+      examples:
+        - { command: set_sashimi_options, params: { name: "reads.bam Sashimi", arc_scale: width, show_counts: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_sashimi_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                min_mapq:              { type: integer, minimum: 0, maximum: 255 }
+                min_overhang:          { type: integer, minimum: 1, maximum: 10000 }
+                include_supplementary: { type: boolean }
+                max_span:              { type: integer, minimum: 1000, maximum: 10000000, description: "Count up to: a wider view is not counted (2,000,000 bases by default)." }
+                min_count:             { type: integer, minimum: 1, maximum: 1000000000, description: "Least reads: junctions below it are not drawn." }
+                arc_scale:             { type: string, enum: [height, width] }
+                shared_scale:          { type: boolean }
+                show_counts:           { type: boolean }
+                show_profile:          { type: boolean }
+                profile_color:         { $ref: "#/components/schemas/Colour" }
+                profile_opacity:       { type: number, minimum: 0, maximum: 1 }
+                line_width:            { type: number, minimum: 0.5, maximum: 10 }
+                scale:                 { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:            { type: boolean }
+                y_min:                 { $ref: "#/components/schemas/AxisBound" }
+                y_max:                 { $ref: "#/components/schemas/AxisBound" }
+                hide_spanning:         { type: boolean, description: "Leave out the junctions whose two ends lie either side of the view." }
+                display:               { type: string, enum: [features, sashimi], description: "A junction track only." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_add_overlay_track:
+      description: Since 0.11.0. Overlays two or more signal, coverage or alignment tracks of one group in one lane, each in its own colour; the tracks stay as they are. Any key of set_overlay_options may be given. The answer names the overlay and its group and gives its options.
+      examples:
+        - { command: add_overlay_track, params: { tracks: [chip_rep1.bw, chip_rep2.bw], style: area, shared_scale: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: add_overlay_track }
+            params:
+              type: object
+              required: [tracks]
+              properties:
+                tracks: { type: [array, string], items: { type: string }, description: "The tracks' names, as a list or separated by commas." }
+                name:   { type: string, description: "The new track's name; default, Overlay: A + B." }
+                shared_scale: { type: boolean, description: "One axis over every source (true) or each its own." }
+                scale:        { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:   { type: boolean }
+                y_min:        { $ref: "#/components/schemas/AxisBound" }
+                y_max:        { $ref: "#/components/schemas/AxisBound" }
+                style:        { type: string, enum: [line, area] }
+                line_width:   { type: number, minimum: 0.5, maximum: 10 }
+                key:          { type: boolean }
+                colors:       { type: array, items: { $ref: "#/components/schemas/Colour" }, description: "One colour a source, in the sources' order." }
+                opacities:    { type: array, items: { type: number, minimum: 0, maximum: 1 }, description: "One opacity a source." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_set_overlay_options:
+      description: Since 0.11.0. An overlay's options, all or nothing; a key the command does not read is refused.
+      examples:
+        - { command: set_overlay_options, params: { name: "Overlay: chip_rep1.bw + chip_rep2.bw", shared_scale: false, opacities: [0.9, 0.6] } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_overlay_options }
+            params:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                shared_scale: { type: boolean, description: "One axis over every source (true) or each its own." }
+                scale:        { $ref: "#/components/schemas/AxisScale" }
+                auto_scale:   { type: boolean }
+                y_min:        { $ref: "#/components/schemas/AxisBound" }
+                y_max:        { $ref: "#/components/schemas/AxisBound" }
+                style:        { type: string, enum: [line, area] }
+                line_width:   { type: number, minimum: 0.5, maximum: 10 }
+                key:          { type: boolean }
+                colors:       { type: array, items: { $ref: "#/components/schemas/Colour" }, description: "One colour a source, in the sources' order." }
+                opacities:    { type: array, items: { type: number, minimum: 0, maximum: 1 }, description: "One opacity a source." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    # Analysis
     RequestCommand_list_analyses:
+      description: |
+        The analyses the tracks given can take. Since 0.11.0 a name that is
+        no track of the active group is refused (404 `TRACK_NOT_FOUND`) and
+        so is a `tracks` that is not a list of names (400 `INVALID_PARAMS`).
+        On a group whose reference is read as a transcriptome, the eight
+        analyses meant for a genome (Splice Junctions, CNV Segmentation,
+        Strand Bias, Simple Peak Calling, Enrichment Over Input, TAD
+        Boundary Detection, Contact Matrix, Contact Frequency vs Distance)
+        are left out of `analyses`, as the Run Analysis dialog leaves them
+        out, and listed under `left_out_for_genome`, each with its `name`,
+        `type` and `reason` (an empty list on any other group);
+        `run_analysis` still runs one named.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1421,17 +2245,25 @@ components:
               type: object
               properties:
                 tracks:
-                  type: array
+                  type: [array, "null"]
                   items: { type: string }
-                  description: Default, the visible tracks.
+                  description: Default (or null), the visible tracks.
 
     RequestCommand_run_analysis:
       description: |
-        Starts one of the 49 analyses on a background thread and answers
+        Starts one of the 59 analyses on a background thread and answers
         at once (`status` running); poll `analysis_status`. An unknown name
         answers 400 `UNKNOWN_ANALYSIS`; another analysis still running, 409
-        `INVALID_STATE`. Every result file gets a manifest beside it
-        (`<result>.manifest.json`).
+        `INVALID_STATE`; since 0.11.0 a name in `tracks` that is no track of
+        the active group, 404 `TRACK_NOT_FOUND`, and a `tracks` that is not
+        a list of names, 400 `INVALID_PARAMS`. Since 0.11.0 an analysis that
+        needs the reference (GC Content, Nucleotide Frequency, CpG Density,
+        Motif Search, Repeat Density, Mismatch Rate, Coding Impact, ORF
+        Prediction) is refused before it starts in a group without one, 409
+        `NO_REFERENCE`, naming the analysis and the group ("GC Content needs
+        a reference, and the group 'custom' has none (No reference): load a
+        FASTA into the group, or switch to a group that has one"). Every
+        result file gets a manifest beside it (`<result>.manifest.json`).
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1445,7 +2277,7 @@ components:
                   type: string
                   description: "Analysis name (e.g. GCContent): see list_analyses for the full catalogue."
                 tracks:
-                  type: array
+                  type: [array, "null"]
                   items: { type: string }
                   description: Input tracks in slot order (A, then B); default, the visible tracks fitted to the analysis's inputs.
                 params:
@@ -1458,12 +2290,80 @@ components:
                     read as `genome`). `chromosome` with `start` and `end`
                     (0-based, end exclusive) names a region and wins over the
                     scope. `hash_inputs` true checksums every input file
-                    whatever its size. A parameter that does not parse or is out
-                    of range fails the analysis and names itself.
+                    whatever its size. Since 0.11.0 Differential Expression's
+                    `condition_a` and `condition_b`, CNV Segmentation's,
+                    Modification Sites' and Modification Co-occurrence's
+                    `control`, and Poly(A) Statistics' `compare` name tracks of
+                    the active group, which are added to the inputs (a name that
+                    is no track: 404 `TRACK_NOT_FOUND`). A parameter that
+                    does not parse or is out of range fails the analysis and
+                    names itself; a parameter the analysis did not read is
+                    named in `analysis_status`'s `parameters_unread`. A
+                    parameter not named takes its default, the value
+                    Settings > Analysis gives it where Settings has a row for
+                    it. Some rules of 0.11.0 a client sees in the results:
+
+                    - Simple Peak Calling, Feature Prominence, Coverage
+                      Anomalies and Variant Density Hotspots take the
+                      background (the cut-off) of a view's or a region's
+                      chromosome, read whole, and list what of that
+                      chromosome meets the view or the region, each whole (the
+                      hotspots in the chromosome's windows from its first
+                      base); a view costs what its chromosome costs. At genome
+                      scope the one cut-off of Feature Prominence and Coverage
+                      Anomalies leaves out the organelles' sequences (chrM,
+                      MT, M, chrMT, Mito, a name holding mitochond; the
+                      plastid's C, chrC, Pt, chrPt, a name holding chloroplast
+                      or plastid), which are still listed, unless no other
+                      sequence has a value. The summary's `background_from`
+                      and `organelles_left_out` say what was read.
+                    - With `count_fragments` (Feature Counts, RPKM, TPM, CPM;
+                      Differential Expression counts fragments by default) a
+                      read pair is counted once, as featureCounts -p
+                      --countReadPairs counts it: each read meets genes by
+                      `mode` on its own strand and votes, and the gene with
+                      the most votes takes the fragment, a tie leaving it
+                      ambiguous; a pair on two chromosomes is paired across
+                      them (`fragments_two_references`); a pair is left out
+                      when both reads are below the MAPQ floor, or when either
+                      is a duplicate (with `ignore_duplicates`), has NH above 1
+                      (without `count_multimapped`) or failed QC (with
+                      `count_qc_failed` false); the whole BAM is read at any
+                      scope, and `primary_only` false is taken.
+                    - Modification Co-occurrence's `pair_test` is
+                      `stratified` by default (a Cochran-Mantel-Haenszel test
+                      over strata of each read's share of modified calls at
+                      the reference's other candidate sites), or `fisher`.
+                    - Contact Matrix's `apply_track_filters` is true by
+                      default: it reads the contacts the input track's Min
+                      score and Min distance keep (at their defaults, 0 and
+                      0, every contact not scored below 0); false reads every
+                      contact.
+                    - ORF Prediction's result track holds at most
+                      `track_cap` ORFs (100,000 by default; 0 keeps every
+                      one), an equal share of each class: the cap is divided
+                      equally among the classes with ORFs, a class with fewer
+                      ORFs than its share keeps them all, and what it leaves
+                      is divided equally among the others again. Places left
+                      over go to the classes first in the order translon,
+                      extension, internal_in_frame, uORF,
+                      upstream_overlapping, dORF, downstream_overlapping,
+                      internal_out_of_frame, non_coding, no_annotation,
+                      unclassified (a cap below the number of classes with
+                      ORFs gives one ORF to each of the first); within a class
+                      the longer ORFs come first, ties broken by a hash of the
+                      transcript and the ORF's place. The table and
+                      `orfs_file` list every ORF; a capped track reads
+                      `track_file` (summary `track_orfs`).
+                    - TAD Boundary Detection, with no window named and every
+                      chromosome too short for the default, takes a window of
+                      a quarter of the longest chromosome, in bins of a tenth
+                      of it, at least 10,000 bases (summary `fitted_window`).
                 output_path: { type: string, description: "A relative path is under the results directory." }
                 results_dir: { type: string, description: "The directory for this run's result files and manifest; a relative one is under the results directory." }
 
     RequestCommand_analysis_status:
+      description: Since 0.11.0 answered 200 whatever the analysis's outcome (a failed one gives success false and its error), with `parameters_unread` for one that succeeded.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1482,11 +2382,11 @@ components:
     RequestCommand_read_result_rows:
       description: |
         The rows of a result file, read from its start to the end of the
-        page, never whole. It reads only a file an analysis wrote (its
-        output, its manifest, a file its summary names), in this run or in
-        the run that saved a session it reopens; any other path, a file in
-        the results directory included, is refused with 403 `NOT_A_RESULT`
-        before it is read.
+        page, never whole; the answer comes when the page is read. It reads
+        only a file an analysis wrote (its output, its manifest, a file its
+        summary names), in this run or in the run that saved a session it
+        reopens; any other path, a file in the results directory included,
+        is refused with 403 `NOT_A_RESULT` before it is read.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1500,6 +2400,7 @@ components:
                 offset: { type: integer, minimum: 0, default: 0, description: "The first row to give, counted from 0." }
                 limit:  { type: integer, minimum: 1, maximum: 1000, default: 100 }
 
+    # Video recording
     RequestCommand_start_recording:
       description: Each key not given takes Settings > Output > Capture's value, and nothing is written back to Settings. A value out of range is refused by name. Without ffmpeg, 500 DEPENDENCY_MISSING.
       allOf:
@@ -1532,7 +2433,9 @@ components:
             command: { type: string, const: recording_status }
             params:  { type: object }
 
+    # Sessions and the process
     RequestCommand_save_session:
+      description: Since 0.11.0 a session also keeps each group's reference mode and edit log, each bookmark's group, and the open Known Features tabs.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1561,7 +2464,7 @@ components:
                 path: { type: string, description: "The .vxs file (a relative path is under the Sessions directory)." }
 
     RequestCommand_shutdown:
-      description: The viewer answers, then closes its window (or, without a window, quits).
+      description: The viewer answers, then closes its window (or, without a window, quits); the process has ended 5 s after the answer at the latest.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1569,6 +2472,7 @@ components:
             command: { type: string, const: shutdown }
             params:  { type: object }
 
+    # Demo data
     RequestCommand_load_demo:
       description: |
         Opens a demo case: downloaded once into the cache from the
@@ -1576,7 +2480,12 @@ components:
         `VX_DEMO_BASE_URL`), checked, loaded, and shown at its figure's
         view. Answers at once; poll `loading_status`. An unknown case is 400
         `INVALID_PARAMS`; another case still being opened, 409 `BUSY`; an
-        address that is not http or https, 409 `INVALID_STATE`.
+        address that is not http or https, 409 `INVALID_STATE`. Since
+        0.11.0 case `builtin` makes the built-in demo again (its files
+        checked, written again when one is missing or differs) and answers
+        when it is made, without holding the window; when its two groups
+        are open already, it keeps them as they are and answers at once
+        with `made` false.
       allOf:
         - $ref: "#/components/schemas/CommandEnvelope"
         - type: object
@@ -1586,7 +2495,7 @@ components:
               type: object
               required: [case]
               properties:
-                case:     { type: [string, integer], description: "1, 2, 3a, 3b or 4." }
+                case:     { type: [string, integer], description: "1, 2, 3a, 3b or 4, or builtin." }
                 navigate: { type: boolean, default: true, description: "Go to the figure's view once the files are loaded." }
 
     RequestCommand_demo_status:
@@ -1596,6 +2505,612 @@ components:
           properties:
             command: { type: string, const: demo_status }
             params:  { type: object }
+
+    # Known Features (since 0.11.0). A tab is named by its key (as
+    # known_features answers it) or by the identifier it was opened with; a
+    # name no open tab has is 404 TAB_NOT_FOUND. A key the command does not
+    # read, or a bad value, is 400 INVALID_PARAMS.
+    RequestCommand_known_features:
+      description: |
+        Since 0.11.0. Opens (or shows) the Known Features tab of a gene,
+        transcript or protein; it fills in the background from the public
+        services turned on in Settings > Known Features. The answer gives
+        `tab` (its key), `opened` (false when it was open already) and
+        `state` (queued, fetching, done, cancelled). With 32 tabs open, 409
+        `BUSY`.
+      examples:
+        - { command: known_features, params: { id: ENSG00000141510 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: known_features }
+            params:
+              type: object
+              required: [id]
+              properties:
+                id:      { type: string, maxLength: 64, description: "An Ensembl gene, transcript or protein ID, a yeast systematic name, a FlyBase or WormBase gene ID, a UniProt accession, a RefSeq transcript or protein, an NCBI Gene ID, an HGNC ID, or a gene's name." }
+                species: { type: string, description: "A species in Ensembl's form, such as homo_sapiens (a gene's name is looked up in it)." }
+                kind:    { type: string, enum: [gene, transcript, protein, uniprot, refseq_transcript, refseq_protein, ncbi_gene, hgnc, symbol], description: "symbol reads an ID-like text as a gene's name; another kind must be the one the text has." }
+                label:   { type: string, maxLength: 64, description: "The tab's name." }
+                refresh: { type: boolean, description: "true asks every service again." }
+              additionalProperties: false
+
+    RequestCommand_known_features_status:
+      description: Since 0.11.0. With `id`, that tab whole (its sections, sources and status line); without, every tab in short with the options.
+      examples:
+        - { command: known_features_status, params: {} }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: known_features_status }
+            params:
+              type: object
+              properties:
+                id: { type: string }
+              additionalProperties: false
+
+    RequestCommand_close_known_features:
+      description: Since 0.11.0. Closes a tab (`id`), or every tab (`all` true, given alone); the answer gives `closed`, how many.
+      examples:
+        - { command: close_known_features, params: { all: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: close_known_features }
+            params:
+              oneOf:
+                - type: object
+                  required: [id]
+                  properties:
+                    id: { type: string }
+                  additionalProperties: false
+                - type: object
+                  required: [all]
+                  properties:
+                    all: { type: boolean, const: true }
+                  additionalProperties: false
+
+    RequestCommand_export_known_features:
+      description: Since 0.11.0. Writes a tab as Markdown or JSON (the JSON also holds the structure's alpha-carbon coordinates); a relative path is under the results directory.
+      examples:
+        - { command: export_known_features, params: { id: ENSG00000141510, path: /tmp/tp53.md } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: export_known_features }
+            params:
+              type: object
+              required: [id, path]
+              properties:
+                id:     { type: string }
+                path:   { type: string }
+                format: { type: string, enum: [markdown, md, json], description: "Default: by the path's extension (.md or .markdown, .json)." }
+              additionalProperties: false
+
+    RequestCommand_set_known_features_options:
+      description: Since 0.11.0. Settings > Known Features, every value checked before any is applied; the answer gives the options.
+      examples:
+        - { command: set_known_features_options, params: { enabled: { intact: true }, interactions: 15, cache_only: false } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: set_known_features_options }
+            params:
+              type: object
+              properties:
+                sources:      { type: array, minItems: 6, maxItems: 6, uniqueItems: true, items: { type: string, enum: [ensembl, uniprot, string, intact, pdb, ncbi] }, description: "All six services, in their new order (the first that names an element gives the tab's name and description)." }
+                enabled:      { type: object, description: "Each service's key to true or false.", propertyNames: { enum: [ensembl, uniprot, string, intact, pdb, ncbi] }, additionalProperties: { type: boolean } }
+                species:      { type: string, description: "Ensembl's form, such as homo_sapiens." }
+                interactions: { type: integer, minimum: 1, maximum: 50, description: "The partners shown (10 by default)." }
+                cache_days:   { type: integer, minimum: 0, maximum: 365, description: "The days an answer is kept (7 by default)." }
+                cache_only:   { type: boolean, description: "Read the cache alone: no request at all." }
+              additionalProperties: false
+
+    # Edit mode (since 0.11.0). Each command edits the active group's
+    # reference or annotation through its edit log. Positions are 0-based,
+    # the end excluded (the log writes them 1-based, as the ruler does). A
+    # request is checked whole before anything changes: a key the command
+    # does not read, a missing or ill-typed value, a position outside the
+    # sequence, a strand other than +, - or ., a name holding a tab, a line
+    # break, a double quote, a semicolon or an equals sign (or longer than
+    # 255 characters), bases other than IUPAC letters or more than
+    # 10,000,000 bases at once: 400 INVALID_PARAMS naming the key. A track,
+    # gene, transcript, exon or feature the group does not hold: 404
+    # TRACK_NOT_FOUND or FEATURE_NOT_FOUND; a sequence the reference does not
+    # hold: 404 NOT_FOUND; an annotation above 50 MiB read through its index:
+    # 400 NOT_SUPPORTED; nothing to undo or redo: 409 INVALID_STATE; no
+    # reference: 409 NO_REFERENCE. Every command but edit_list is refused
+    # while an analysis runs (409 BUSY) or a file loads (409 LOADING). A gene
+    # is its ID on one sequence: `chromosome` (and, for a transcript or an
+    # exon, `gene_id`) names one copy of an ID that two sequences, or two
+    # genes of one sequence, carry, and `gene_start` one of the copies of an
+    # ID on one sequence by its present start (0-based, as get_genes gives
+    # it); a start where no copy lies is 404 FEATURE_NOT_FOUND, and where the
+    # keys given leave several, 400 INVALID_PARAMS names the key to give.
+    # Every answer gives `log` (its length and the position of Undo).
+    RequestCommand_edit_add_gene:
+      description: Adds a gene with one transcript of one exon over [start, end). Its ID defaults to the next free VXEDIT number, its name to its ID, its biotype to protein_coding, its transcript's ID to the gene's with -T1, its strand to +. The answer gives the gene.
+      examples:
+        - { command: edit_add_gene, params: { chromosome: chr1, start: 10000, end: 12000, strand: "-", name: MYGENE } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_add_gene }
+            params:
+              type: object
+              required: [chromosome, start, end]
+              properties:
+                track:         { type: string }
+                chromosome:    { type: string }
+                start:         { type: integer, minimum: 0 }
+                end:           { type: integer, minimum: 1 }
+                strand:        { type: string, enum: ["+", "-", "."] }
+                gene_id:       { type: string }
+                name:          { type: string }
+                biotype:       { type: string }
+                transcript_id: { type: string }
+              additionalProperties: false
+
+    RequestCommand_edit_add_transcript:
+      description: Adds a transcript to a gene, from its exons ([start, end) pairs) and, for a coding one, its translon ([start, end)). The transcript is put in order (exons numbered in the order of transcription, phases by GTF's rule).
+      examples:
+        - { command: edit_add_transcript, params: { gene_id: VXEDIT1, exons: [[10000, 10400], [11000, 12000]], translon: [10100, 11500] } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_add_transcript }
+            params:
+              type: object
+              required: [gene_id, exons]
+              properties:
+                track:         { type: string }
+                gene_id:       { type: string }
+                chromosome:    { type: string, description: "The gene's sequence, to name one copy of an ID on two." }
+                gene_start:    { type: integer, minimum: 0, description: "The gene's present start (0-based), to name one of the copies of its ID on one sequence." }
+                transcript_id: { type: string, description: "Default: the gene's ID with -T and the next number." }
+                name:          { type: string }
+                exons:         { type: array, minItems: 1, items: { type: array, minItems: 2, maxItems: 2, items: { type: integer, minimum: 0 } } }
+                translon:      { type: array, minItems: 2, maxItems: 2, items: { type: integer, minimum: 0 } }
+              additionalProperties: false
+
+    RequestCommand_edit_add_exon:
+      description: Adds an exon [start, end) to a transcript.
+      examples:
+        - { command: edit_add_exon, params: { transcript_id: VXEDIT1-T2, start: 12500, end: 12800 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_add_exon }
+            params:
+              type: object
+              required: [transcript_id, start, end]
+              properties:
+                track:         { type: string }
+                transcript_id: { type: string }
+                gene_id:       { type: string }
+                chromosome:    { type: string }
+                gene_start:    { type: integer, minimum: 0, description: "The transcript's gene's present start (0-based), to name one of the copies of its ID on one sequence." }
+                start:         { type: integer, minimum: 0 }
+                end:           { type: integer, minimum: 1 }
+              additionalProperties: false
+
+    RequestCommand_edit_add_feature:
+      description: Adds a feature to a feature track; a name that is no track of the group makes a new feature track.
+      examples:
+        - { command: edit_add_feature, params: { track: my_sites, chromosome: chr1, start: 500, end: 520, name: site1 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_add_feature }
+            params:
+              type: object
+              required: [track, chromosome, start, end]
+              properties:
+                track:      { type: string }
+                chromosome: { type: string }
+                start:      { type: integer, minimum: 0 }
+                end:        { type: integer, minimum: 1 }
+                name:       { type: string }
+                strand:     { type: string, enum: ["+", "-", "."], default: "." }
+                score:      { type: number }
+              additionalProperties: false
+
+    RequestCommand_edit_move:
+      description: Moves a gene, transcript, exon or feature by `by` bases (signed) or `to` a new start, one of them.
+      examples:
+        - { command: edit_move, params: { kind: gene, gene_id: VXEDIT1, by: 250 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_move }
+            params:
+              type: object
+              required: [kind]
+              properties:
+                by: { type: integer, description: "Bases; not 0." }
+                to: { type: integer, minimum: 0, description: "The new start." }
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_resize:
+      description: Gives an item a new start, a new end, or both.
+      examples:
+        - { command: edit_resize, params: { kind: exon, transcript_id: VXEDIT1-T1, exon_number: 1, new_end: 12200 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_resize }
+            params:
+              type: object
+              required: [kind]
+              properties:
+                new_start: { type: integer, minimum: 0 }
+                new_end:   { type: integer, minimum: 1 }
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_delete:
+      examples:
+        - { command: edit_delete, params: { kind: feature, track: my_sites, chromosome: chr1, start: 500, end: 520 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_delete }
+            params:
+              type: object
+              required: [kind]
+              properties:
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_rename:
+      examples:
+        - { command: edit_rename, params: { kind: transcript, transcript_id: VXEDIT1-T1, new_name: MYGENE-201 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_rename }
+            params:
+              type: object
+              required: [kind, new_name]
+              properties:
+                new_name: { type: string }
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_set_strand:
+      description: A gene's or a feature's strand (a transcript and its exons take their gene's).
+      examples:
+        - { command: edit_set_strand, params: { kind: gene, gene_id: VXEDIT1, strand: "+" } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_set_strand }
+            params:
+              type: object
+              required: [kind, strand]
+              properties:
+                strand: { type: string, enum: ["+", "-", "."] }
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_set_biotype:
+      description: A gene's biotype (kind gene alone).
+      examples:
+        - { command: edit_set_biotype, params: { kind: gene, gene_id: VXEDIT1, biotype: lncRNA } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_set_biotype }
+            params:
+              type: object
+              required: [kind, biotype]
+              properties:
+                biotype: { type: string }
+                kind:          { type: string, enum: [gene, transcript, exon, feature] }
+                track:         { type: string, description: "A gene's, transcript's or exon's gene track (default, the group's one gene track held in memory); a feature's feature track (required)." }
+                gene_id:       { type: string }
+                transcript_id: { type: string, description: "A transcript's or an exon's." }
+                exon_number:   { type: integer, minimum: 0, description: "An exon's number in its transcript." }
+                chromosome:    { type: string, description: "A gene's sequence (to name one copy of an ID on two), or a feature's (required)." }
+                gene_start:    { type: integer, minimum: 0, description: "A gene's, transcript's or exon's: the present start (0-based, as get_genes gives it) of one of the copies of the gene's ID on one sequence." }
+                start:         { type: integer, minimum: 0, description: "A feature's start (required)." }
+                end:           { type: integer, minimum: 0, description: "A feature's end (required)." }
+                name:          { type: string, description: "A feature's name, when two features share its span." }
+              additionalProperties: false
+
+    RequestCommand_edit_insert_bases:
+      description: Puts bases in before `position` (the sequence's length appends them). Every later coordinate of the sequence moves on the tracks held in memory; the answer gives the sequence's new length, its first changed position and, for each track, the items shifted and set aside.
+      examples:
+        - { command: edit_insert_bases, params: { chromosome: chr1, position: 15000, bases: ACGTACGT } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_insert_bases }
+            params:
+              type: object
+              required: [chromosome, position, bases]
+              properties:
+                chromosome: { type: string }
+                position:   { type: integer, minimum: 0 }
+                bases:      { type: string, minLength: 1, maxLength: 10000000, pattern: "^[ACGTNRYKMSWBDHVacgtnrykmswbdhv]+$" }
+              additionalProperties: false
+
+    RequestCommand_edit_delete_bases:
+      description: Takes the bases of [start, end) out (a sequence keeps one base at least).
+      examples:
+        - { command: edit_delete_bases, params: { chromosome: chr1, start: 20000, end: 20010 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_delete_bases }
+            params:
+              type: object
+              required: [chromosome, start, end]
+              properties:
+                chromosome: { type: string }
+                start:      { type: integer, minimum: 0 }
+                end:        { type: integer, minimum: 1 }
+              additionalProperties: false
+
+    RequestCommand_edit_replace_bases:
+      description: Replaces the bases of [start, end) by `bases`, of any length.
+      examples:
+        - { command: edit_replace_bases, params: { chromosome: chr1, start: 30000, end: 30003, bases: GGA } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_replace_bases }
+            params:
+              type: object
+              required: [chromosome, start, end, bases]
+              properties:
+                chromosome: { type: string }
+                start:      { type: integer, minimum: 0 }
+                end:        { type: integer, minimum: 1 }
+                bases:      { type: string, minLength: 1, maxLength: 10000000, pattern: "^[ACGTNRYKMSWBDHVacgtnrykmswbdhv]+$" }
+              additionalProperties: false
+
+    RequestCommand_edit_undo:
+      description: Undoes the last edits (the answer's `undone` lists them).
+      examples:
+        - { command: edit_undo, params: { steps: 2 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_undo }
+            params:
+              type: object
+              properties:
+                steps: { type: integer, minimum: 1, maximum: 1000, default: 1 }
+              additionalProperties: false
+
+    RequestCommand_edit_redo:
+      description: Does again the edits undone last (the answer's `redone` lists them); a new edit after an undo drops the edits undone.
+      examples:
+        - { command: edit_redo, params: { steps: 1 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_redo }
+            params:
+              type: object
+              properties:
+                steps: { type: integer, minimum: 1, maximum: 1000, default: 1 }
+              additionalProperties: false
+
+    RequestCommand_edit_list:
+      description: The active group's edit log (`operations`); answered at any time, an analysis or a load running.
+      examples:
+        - { command: edit_list }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_list }
+            params:
+              type: object
+              additionalProperties: false
+
+    RequestCommand_edit_write:
+      description: |
+        Writes the edited reference as FASTA with its .fai, a gene track as
+        GTF or GFF3 with its gene index (.gidx), and a feature track as BED
+        (a feature with blocks as a BED12 line), each at the absolute path
+        its key gives, in a folder that is there; a file that is there is
+        refused unless `overwrite` is true. A write that fails is 500
+        `WRITE_FAILED`. In a GFF3 each copy of a gene ID, and each of its
+        transcripts, gets an ID of its own: @ and the chromosome
+        (`gene:ATCG00150@ChrC`), and for copies on one chromosome also a
+        colon and the copy's first base (`gene:ATMG01360@Chr2:3591778`);
+        the GTF keeps the gene_id, and VX reads either file back as the
+        same genes.
+      examples:
+        - { command: edit_write, params: { fasta: /tmp/edited.fa, annotation: /tmp/edited.gff3, overwrite: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_write }
+            params:
+              type: object
+              properties:
+                fasta:         { type: string }
+                annotation:    { type: string }
+                features:      { type: string }
+                track:         { type: string, description: "The gene track to write (with annotation); default, the one the edits changed, else the group's one gene track held in memory." }
+                feature_track: { type: string, description: "The feature track to write (with features); default, the one the edits changed." }
+                format:        { type: string, enum: [gtf, gff3], description: "With annotation; default, by its extension (.gtf; .gff3 or .gff)." }
+                overwrite:     { type: boolean, default: false }
+              additionalProperties: false
+
+    RequestCommand_edit_discard:
+      description: Drops every edit of the active group and gives the original reference back; the answer gives `discarded`.
+      examples:
+        - { command: edit_discard }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: edit_discard }
+            params:
+              type: object
+              additionalProperties: false
+
+    # Circular view and dot plot (since 0.11.0)
+    RequestCommand_open_circular_view:
+      description: |
+        Since 0.11.0. Opens the circular view of a sequence of up to
+        20,000,000 bases in its window, with the rings named or the first
+        ten that have something on the sequence. A viewer without a window
+        answers 409 `INVALID_STATE`; a longer sequence 400 `INVALID_PARAMS`;
+        a name the reference lacks 404 `CHROMOSOME_NOT_FOUND`. The answer
+        gives the view's state (`view`).
+      examples:
+        - { command: open_circular_view, params: { sequence: chrM, chords: true } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: open_circular_view }
+            params:
+              type: object
+              properties:
+                sequence: { type: string, description: "Default: the chromosome in view." }
+                rings:    { type: array, items: { type: string }, description: "Track names or ring titles." }
+                labels:   { type: boolean }
+                ruler:    { type: boolean }
+                chords:   { type: boolean }
+                legend:   { type: boolean }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_export_circular_view:
+      description: Since 0.11.0. Writes the circular view as SVG or PNG, with a window or without; the answer comes when the file is written.
+      examples:
+        - { command: export_circular_view, params: { path: /tmp/chrM.svg, sequence: chrM, width: 1200, height: 900 } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: export_circular_view }
+            params:
+              type: object
+              required: [path]
+              properties:
+                path:     { type: string, pattern: "\\.([sS][vV][gG]|[pP][nN][gG])$", description: "A file ending in .svg or .png." }
+                sequence: { type: string, description: "Default: the window's sequence, else the chromosome in view." }
+                rings:    { type: array, items: { type: string } }
+                labels:   { type: boolean }
+                ruler:    { type: boolean }
+                chords:   { type: boolean }
+                legend:   { type: boolean }
+                width:    { type: number, minimum: 200, maximum: 8000, default: 1200, description: "Logical pixels." }
+                height:   { type: number, minimum: 200, maximum: 8000, default: 900 }
+                scale:    { type: number, minimum: 0.25, maximum: 8, default: 1, description: "A PNG's pixels a logical pixel." }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
+
+    RequestCommand_dot_plot:
+      description: |
+        Since 0.11.0. Writes a dot plot of exact word matches as SVG or PNG:
+        a region against itself (`x`), against another (`x` and `y`), or a
+        transcript against its gene's region (`transcript`). A side longer
+        than 2,000,000 bases is refused; up to 100,000 bases a side and
+        2,000,000 matches the matches are drawn as runs, beyond that they
+        are counted in at most 1,000 by 1,000 cells (`binned`). The answer
+        comes when the file is written. With `open`, the dot plot's dialog
+        shows it too (not without a window).
+      examples:
+        - { command: dot_plot, params: { x: "chr1:100000-140000", word: 12, path: /tmp/self.png } }
+      allOf:
+        - $ref: "#/components/schemas/CommandEnvelope"
+        - type: object
+          properties:
+            command: { type: string, const: dot_plot }
+            params:
+              type: object
+              required: [path]
+              properties:
+                x:          { type: string, description: "chromosome:start-end (0-based, end excluded), or a sequence's name; needed unless transcript is given." }
+                y:          { type: string }
+                transcript: { type: string }
+                word:       { type: integer, minimum: 4, maximum: 31, default: 12 }
+                path:       { type: string, pattern: "\\.([sS][vV][gG]|[pP][nN][gG])$" }
+                width:      { type: number, minimum: 200, maximum: 8000, default: 900 }
+                height:     { type: number, minimum: 200, maximum: 8000, default: 900 }
+                scale:      { type: number, minimum: 0.25, maximum: 8, default: 1 }
+                open:       { type: boolean }
+              patternProperties:
+                "^_": {}
+              additionalProperties: false
 
     # ── Selected response schemas (illustrative; many more exist) ──
     Response_navigate:
@@ -1613,6 +3128,16 @@ components:
         viewStart:  { type: integer }
         viewEnd:    { type: integer }
         viewLength: { type: integer }
+
+    Response_set_reference_mode:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        group:   { type: string }
+        mode:    { type: string, enum: [auto, genome, transcriptome] }
+        kind:    { type: string, enum: [none, genome, transcriptome], description: "What the reference is read as." }
+        why:     { type: string }
 
     Response_next_coverage_region:
       type: object
@@ -1664,7 +3189,8 @@ components:
             type: object
             properties:
               geneId:     { type: string }
-              geneName:   { type: string }
+              geneName:   { type: string, description: "The annotation's name." }
+              displayName: { type: string, description: "The name the screens show (since 0.11.0): the annotation's, with the chromosome in brackets for an ID that other chromosomes carry too (\"ATCG00150 (ChrC)\"), or with the chromosome and the first base (1-based) for one of the copies of an ID on one chromosome (\"ATMG01360 (Chr2:3,591,778)\")." }
               biotype:    { type: string }
               chromosome: { type: string }
               start:      { type: integer }
@@ -1710,10 +3236,14 @@ components:
             type: object
             properties:
               geneId:     { type: string }
-              geneName:   { type: string }
+              geneName:   { type: string, description: "The annotation's name (its ID where it has none)." }
+              displayName: { type: string, description: "The name the screens show (since 0.11.0): the annotation's, with the chromosome in brackets for an ID that other chromosomes carry too (\"ATCG00150 (ChrC)\"), or with the chromosome and the first base (1-based) for one of the copies of an ID on one chromosome (\"ATMG01360 (Chr2:3,591,778)\")." }
+              biotype:    { type: string, description: "An annotation held in memory." }
               chromosome: { type: string }
               start:      { type: integer }
               end:        { type: integer }
+              strand:     { type: string, enum: ["+", "-", "."], description: "An annotation held in memory." }
+              description: { type: string, description: "An annotation read through its gene index, when the gene has one." }
 
     Response_click_element:
       type: object
@@ -1767,6 +3297,13 @@ components:
               name:   { type: string }
               length: { type: integer }
 
+    Response_add_bookmark:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        group:   { type: string, description: "The bookmark's group; an empty text for every group (since 0.11.0)." }
+
     Response_list_bookmarks:
       type: object
       properties:
@@ -1779,6 +3316,67 @@ components:
               index:  { type: integer }
               label:  { type: string }
               region: { type: string, description: "'chr:start-end' format (0-based start, end exclusive)." }
+              group:  { type: string, description: "Since 0.11.0; an empty text for every group." }
+        activeGroup: { type: string, description: "Since 0.11.0." }
+        view:        { type: string, enum: [all, group], description: "Since 0.11.0." }
+
+    Response_goto_bookmark:
+      type: object
+      properties:
+        success:  { type: boolean }
+        message:  { type: string }
+        group:    { type: string, description: "The group gone to (since 0.11.0)." }
+        switched: { type: boolean, description: "Whether the active group changed (since 0.11.0)." }
+
+    Response_track_options:
+      type: object
+      description: The answer of set_coverage_options, set_sequence_options, set_gene_options, set_feature_options, set_sashimi_options, set_overlay_options and set_aggregate_options (each with `options`), set_track_options (with `style`), set_interaction_options (with `interaction` and `matrix`), set_dti_options (with `dti`) and set_alignment_options (with `options` and, when a strip was opened, `opened_track`).
+      properties:
+        success:      { type: boolean }
+        message:      { type: string }
+        options:      { type: object }
+        style:        { type: object }
+        interaction:  { type: object }
+        matrix:       { type: [object, "null"] }
+        dti:          { type: object }
+        opened_track: { type: string }
+        warning:      { type: string, description: "A variant summary's: min_alt_per_strand set on RNA reads." }
+
+    Response_add_track:
+      type: object
+      description: The answer of add_aggregate_track, add_sashimi_track and add_overlay_track.
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        name:    { type: string, description: "The new track's name." }
+        group:   { type: string }
+        options: { type: object }
+        warning: { type: string }
+
+    Response_aggregate_rows:
+      type: object
+      properties:
+        success:    { type: boolean }
+        name:       { type: string }
+        chromosome: { type: string }
+        bam_chromosome: { type: string, description: "The BAM's name for it." }
+        start:      { type: integer }
+        end:        { type: integer }
+        max_span:   { type: integer }
+        options:    { type: object }
+        rows:       { type: array, items: { type: object }, description: "Without path." }
+        path:       { type: string, description: "With path." }
+        format:     { type: string, enum: [tsv, bedmethyl] }
+        rows_written: { type: integer }
+        resolution: { type: string, description: "A modification density's." }
+        tested:     { type: integer }
+        q_over:     { type: string, description: "A variant summary's: the sites and region its q is over." }
+        test:       { type: string, description: "A modification density's: binomial or fisher. A variant summary's: the test in words." }
+        sites_untested: { type: integer, description: "A variant summary's: the sites listed and not tested (Fisher's test where the control has no read)." }
+        strand_filtered: { type: integer, description: "A variant summary's: the sites the strand rule left out." }
+        strand_unjudged: { type: integer, description: "A variant summary's, since 0.11.0: the sites listed that the strand rule could not judge (their main change under min_alt_per_strand reads on a strand, and their reference base too)." }
+        strand_rule: { type: string, description: "A variant summary's: the strand rule and what it did, in words; empty with the rule off." }
+        control:    { type: object, description: "A variant summary's: the control's name and bam, whether it was counted, its records, and why not (problem)." }
 
     Response_loading_status:
       type: object
@@ -1795,6 +3393,34 @@ components:
         filename:     { type: string }
         demo:         { type: object, description: "While or after a demo case is opened: the job (case, phase, bytes, files, error)." }
 
+    Response_list_analyses:
+      type: object
+      properties:
+        analyses:
+          type: array
+          items:
+            type: object
+            properties:
+              name:           { type: string }
+              type:           { type: string }
+              description:    { type: string }
+              category:       { type: string }
+              output_format:  { type: string }
+              needs_sequence: { type: boolean }
+              reads_sequence: { type: boolean }
+              inputs:         { type: array, items: { type: object } }
+        left_out_for_genome:
+          type: array
+          description: Since 0.11.0, on a group whose reference is read as a transcriptome, the analyses meant for a genome that `analyses` leaves out; an empty list on any other group.
+          items:
+            type: object
+            properties:
+              name:   { type: string }
+              type:   { type: string, description: "The name run_analysis takes." }
+              reason: { type: string }
+        track_count:  { type: integer }
+        has_sequence: { type: boolean }
+
     Response_run_analysis:
       type: object
       properties:
@@ -1809,7 +3435,7 @@ components:
         stage:      { type: string }
         progress:   { type: number, minimum: 0, maximum: 1 }
         complete:   { type: boolean, description: "True only once the analysis has ended, with running false and its result." }
-        cancelled:  { type: boolean }
+        cancelled:  { type: boolean, description: "False for an analysis that succeeded." }
         elapsed_seconds: { type: number }
         estimated_remaining_seconds: { type: number }
         success:        { type: boolean }
@@ -1817,6 +3443,7 @@ components:
         output_path:    { type: string }
         summary:        { type: object, description: "The analysis's counts; summary.manifest names the manifest." }
         parameters:     { type: object, description: "Every parameter the analysis read, as applied." }
+        parameters_unread: { type: array, items: { type: string }, description: "Since 0.11.0: the parameters the request gave that the analysis did not read." }
         scope_applied:  { type: string }
         region_applied:
           type: object
@@ -1890,6 +3517,7 @@ components:
 
     Response_load_demo:
       type: object
+      description: A demo case's answer (case 1, 2, 3a, 3b or 4), or, for case builtin (since 0.11.0), the making of the built-in demo (dir, written, reasons, files, bytes, millis, fallback, groups, navigate, made).
       properties:
         success:        { type: boolean }
         message:        { type: string }
@@ -1906,6 +3534,14 @@ components:
           items: { type: string }
         view:           { type: string }
         navigate:       { type: boolean }
+        written:        { type: boolean, description: "builtin: whether the demo's files were written now." }
+        reasons:        { type: array, items: { type: string } }
+        files:          { type: integer }
+        bytes:          { type: integer }
+        millis:         { type: number }
+        fallback:       { type: boolean, description: "builtin: made in memory, its files could not be written." }
+        groups:         { type: array, items: { type: string } }
+        made:           { type: boolean, description: "builtin: false when the demo's two groups were kept as they were." }
 
     Response_demo_status:
       type: object
@@ -1935,3 +3571,81 @@ components:
         job:
           type: [object, "null"]
           description: The last demo job, or null.
+
+    Response_known_features:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        tab:     { type: string, description: "The tab's key." }
+        opened:  { type: boolean }
+        state:   { type: string, enum: [queued, fetching, done, cancelled] }
+
+    Response_edit:
+      type: object
+      description: The answer of an edit command (since 0.11.0).
+      properties:
+        success:     { type: boolean }
+        log:
+          type: object
+          properties:
+            length:   { type: integer }
+            position: { type: integer, description: "Where Undo stands." }
+        operation:   { type: integer, description: "The edit's index in the log." }
+        description: { type: string, description: "The log's line." }
+        gene:        { type: object, description: "The gene as it is now." }
+        feature:     { type: object, description: "The feature as it is now." }
+        sequence:
+          type: object
+          description: After a base edit.
+          properties:
+            name:          { type: string }
+            length:        { type: integer }
+            first_changed: { type: [integer, "null"] }
+        tracks:
+          type: array
+          description: After a base edit, each track's items shifted and set aside.
+          items:
+            type: object
+            properties:
+              track:   { type: string }
+              shifted: { type: integer }
+              dropped: { type: integer }
+        operations: { type: array, items: { type: object }, description: "edit_list." }
+        undone:     { type: array, items: { type: string } }
+        redone:     { type: array, items: { type: string } }
+        discarded:  { type: integer }
+        fasta:      { type: string, description: "edit_write: the files written, with their counts." }
+        fai:        { type: string }
+        annotation: { type: string }
+        index:      { type: string }
+        features:   { type: string }
+
+    Response_export_circular_view:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        path:    { type: string }
+        format:  { type: string, enum: [svg, png] }
+        width:   { type: number }
+        height:  { type: number }
+        scale:   { type: number }
+        view:    { type: object, description: "The sequence, its rings and chords." }
+
+    Response_dot_plot:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        path:    { type: string }
+        format:  { type: string, enum: [svg, png] }
+        title:   { type: string }
+        x:       { type: object, description: "name, chromosome, start, end, length, transcript." }
+        y:       { type: object }
+        word:    { type: integer }
+        binned:  { type: boolean }
+        forwardMatches: { type: integer }
+        reverseMatches: { type: integer }
+        runs:    { type: integer }
+        opened:  { type: boolean }

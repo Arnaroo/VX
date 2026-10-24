@@ -12,7 +12,7 @@ auditor can answer three questions without access to our build hosts:
 
 It is a distilled, public-facing summary of the internal build
 notes: host-specific paths and provisioning credentials have been
-stripped. It describes VX 0.10.0 ("Banksia").
+stripped. It describes VX 0.11.0 ("Callistemon").
 
 The D source code that produced these binaries is **proprietary and
 confidential** and is not distributed through this repository
@@ -72,7 +72,7 @@ codename), its debug sections are stripped (`strip --strip-debug`;
 the symbol table is kept, so that a crash report still names
 functions), and it is staged with the font it draws with (DejaVu
 Sans Mono and its licence) and a `SHA256SUMS`. The tarball holds one
-directory, `VX-0.10.0-linux-x86_64/` (`bin/vx`, `fonts/`,
+directory, `VX-0.11.0-linux-x86_64/` (`bin/vx`, `fonts/`,
 `README-INSTALL.txt`, `README.md`, `LICENSE.txt`, `SHA256SUMS`),
 and is made reproducibly from the staged files: names sorted, owner
 and group 0, every time set to the release date, gzip without a
@@ -81,7 +81,7 @@ name or a time.
 `dub.json` also has the build types `release-znver2` (AMD Zen 2),
 `release-broadwell` (Intel Broadwell), tuned builds of the same
 source, and `release-native` (the build host's own processor,
-never shipped). 0.10.0 publishes the `x86-64-v3` build alone.
+never published). 0.11.0 publishes the `x86-64-v3` build alone.
 
 ### Bundled libraries (Linux)
 
@@ -96,7 +96,7 @@ holds VX, its font and its documents.
 | Item | Value |
 |---|---|
 | Build host | an Apple silicon Mac running macOS 26 |
-| Toolchain | LDC 1.41.0 |
+| Toolchain | LDC 1.41.0 (D front end 2.111.0, LLVM 20.1.5) |
 | Linker | Apple's `ld` |
 | Build type | `release-macos`: `-O3 -mcpu=apple-m1 --fp-contract=fast -boundscheck=off -dead_strip`, no LTO |
 | D runtime | LDC's static `libdruntime-ldc.a` and `libphobos2-ldc.a`, force-loaded (`-force_load`) |
@@ -106,7 +106,7 @@ holds VX, its font and its documents.
 
 Packaging:
 
-1. `dub build --config=macos --compiler=<LDC 1.41.0's ldc2> --build=release-macos`.
+1. `dub build --config=macos --compiler=<LDC's ldc2> --build=release-macos`.
 2. The GTK libraries GtkD opens by name, and every library they
    need, are copied from Homebrew with `dylibbundler`, which gives
    them `@rpath/` install names; the binary's run paths are
@@ -120,7 +120,7 @@ Packaging:
    fontconfig configuration, and the font with its licence.
 4. `VX.app` is assembled: the binary is `Contents/MacOS/vx`, the
    rest under `Contents/Resources/`, with `Info.plist` (bundle id
-   `org.biocodecs.vx`, version 0.10.0), `LICENSE.txt` and
+   `org.biocodecs.vx`, version 0.11.0), `LICENSE.txt` and
    `THIRD_PARTY_LICENSES.txt`.
 5. Ad-hoc signing: `codesign --force --deep --sign - VX.app`; the
    packaging stops unless `codesign --verify --deep --strict`
@@ -136,7 +136,7 @@ Packaging:
 | Homebrew (`/opt/homebrew`): GTK 3, GLib, cairo, Pango, HarfBuzz, FreeType, fontconfig, gdk-pixbuf and what they need | 35 libraries |
 | Static druntime + Phobos | linked into the binary itself |
 
-`THIRD_PARTY_LICENSES.txt` names each Homebrew formula shipped,
+`THIRD_PARTY_LICENSES.txt` names each Homebrew formula the bundle holds,
 with its version, licence, home page and source, followed by the
 licence texts.
 
@@ -153,12 +153,12 @@ it through, after which it opens at once.
 |---|---|
 | Build host | Windows x86-64 |
 | Toolchain | LDC 1.43.0 (its `windows-multilib` release) |
-| Linker | LLD (`lld-link`), the linker built into LDC, which a full link-time optimisation needs; the C runtime, the Windows SDK's libraries and MSVC's `cl` (for a small FreeType shim) from the Visual Studio Build Tools 18.4 |
+| Linker | LLD (`lld-link`), the linker built into LDC, which a full link-time optimisation needs; the C runtime, the Windows SDK's libraries and MSVC's `cl` (for a small FreeType shim) from the Visual Studio Build Tools 18.4 (MSVC 14.50) |
 | Target | `x86_64-windows-msvc` |
 | Build type | `release-windows`: `-O3 -mcpu=x86-64-v3 --fp-contract=fast -boundscheck=off -flto=full`, the LTO druntime and Phobos linked statically, `-function-sections -data-sections`, `/OPT:REF /OPT:ICF` |
 | Configuration | both of `dub.json`'s: `windows-gui` (linked with `/SUBSYSTEM:WINDOWS`, no terminal window) as `vx.exe`, and `windows` (a console program, for the command line) as `vx-console.exe` |
 | GTK | MSYS2's MINGW64 GTK 3.24.51 and the DLLs it needs |
-| Other libraries | libcurl 8.21 from MSYS2 with OpenSSL 3; libtiff 4.7.1 built with MSVC without JBIG and without external codecs, so that no GPL library ships |
+| Other libraries | libcurl 8.21 from MSYS2 with OpenSSL 3.6; libtiff 4.7.1 built with MSVC without JBIG and without external codecs, so that the package holds no GPL library |
 
 Packaging:
 
@@ -173,17 +173,17 @@ Packaging:
    themes, the GSettings schemas (compiled), fontconfig's
    configuration, and the font with its licence.
 3. `LICENSE.txt` and `THIRD_PARTY_LICENSES.txt` (each MSYS2
-   package shipped, with its version, licence, home page and the
+   package the ZIP holds, with its version, licence, home page and the
    source archive of the exact build, followed by the licence
    texts).
-4. The ZIP, `VX-0.10.0-windows-x86_64.zip`, holding one folder,
+4. The ZIP, `VX-0.11.0-windows-x86_64.zip`, holding one folder,
    `vx-windows/`, and its `.sha256`. No installer is published.
 
 ### Bundled libraries (Windows)
 
 | Source | Count |
 |---|---|
-| MSYS2 MINGW64: GTK 3, GLib, cairo, Pango, HarfBuzz, FreeType, fontconfig, gdk-pixbuf, libepoxy, libpng, libjpeg, librsvg, libcurl, OpenSSL and what they need; libtiff built for VX | 53 DLLs |
+| MSYS2 MINGW64: GTK 3, GLib, cairo, Pango, HarfBuzz, FreeType, fontconfig, gdk-pixbuf, libepoxy, libpng, libjpeg, librsvg, libcurl, OpenSSL and what they need; libtiff built for VX | at most 53 DLLs, each on the fixed list |
 | gdk-pixbuf image loaders (`lib/gdk-pixbuf-2.0/`) | PNG, JPEG, SVG |
 | GTK theme (`share/themes/Default`) | key bindings |
 | Icon themes (`share/icons/{Adwaita,hicolor}`) | included |
@@ -240,6 +240,7 @@ binary always identifies itself as the version declared at the
 time of build, with no extra `+gitsha` qualifier.
 
 The first public release is `0.9.0` ("Aardvark"); `0.9.0.1`
-re-published it unchanged for its archival DOI, and `0.10.0`
-("Banksia") is the next version of the program. See
+re-published it unchanged for its archival DOI, `0.10.0`
+("Banksia") was the next version of the program, and `0.11.0`
+("Callistemon") is the one after it. See
 [`../CHANGELOG.md`](../CHANGELOG.md) for the release timeline.

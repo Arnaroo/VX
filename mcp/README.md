@@ -14,19 +14,27 @@ MCP-compatible client).
 VX runs an embedded HTTP API on `127.0.0.1:9876`. The MCP server
 in this folder is a thin, dependency-light Python wrapper that:
 
-- exposes 58 MCP tools to the agent: 53 send VX's commands through
+- exposes 80 MCP tools to the agent: 75 send VX's commands through
   `POST /command` (`vx_load_demo` sends `load_demo`, or
-  `demo_status` when no case is given), `vx_navigate` posts to
+  `demo_status` when no case is given; the four Edit mode tools
+  send the 18 `edit_*` commands), `vx_navigate` posts to
   `/navigate`, and `vx_ping`, `vx_get_state`, `vx_screenshot` and
   `vx_screenshot_track` use the `GET` endpoints;
 - translates MCP tool invocations into HTTP requests against the
   running VX instance;
 - returns VX's JSON answers as text, an error's body included
   (whatever its HTTP status), and captures as MCP image blocks,
-  which a vision model sees.
+  which a vision model sees. A request VX gives no answer to (VX
+  not running at the address in use, a wait that ends, a broken
+  connection) is answered in the same shape, with `code`
+  `CONNECTION_ERROR`, `CLIENT_TIMEOUT` or `HTTP_ERROR`.
 
 The wrapper is intentionally stateless: VX itself owns all state
-(open files, current viewport, active analyses).
+(open files, current viewport, active analyses). The commands
+whose answer comes when their work ends (`next_coverage_region`,
+`aggregate_rows`, `read_result_rows`, `load_demo` with case
+`builtin`, `export_circular_view`, `dot_plot`) are awaited without
+a client timeout.
 
 ---
 
@@ -83,16 +91,26 @@ its reference; the HTTP shapes behind them are in
 | Observation | 5 | `vx_ping`, `vx_get_state`, `vx_screenshot`, `vx_screenshot_track`, `vx_list_chromosomes` |
 | Navigation | 7 | `vx_navigate`, `vx_zoom`, `vx_pan`, `vx_select_region`, `vx_next_coverage_region`, `vx_cancel_coverage_scan`, `vx_click_element` |
 | File & track management | 7 | `vx_load_file` (auto-detects FASTA/GTF/BAM/BED/VCF/BigWig/etc.), `vx_set_track_visibility`, `vx_set_track_height`, `vx_remove_track`, `vx_reorder_track`, `vx_set_track_scroll`, `vx_load_demo` |
-| Group management | 3 | `vx_create_group`, `vx_switch_group`, `vx_remove_group` |
+| Group management | 4 | `vx_create_group`, `vx_switch_group`, `vx_remove_group`, `vx_set_reference_mode` |
 | Data queries | 3 | `vx_get_sequence`, `vx_get_genes`, `vx_search_genes` |
 | Configuration | 2 | `vx_set_config` (grid, labels, dark mode, font/UI scale, active mode, track height), `vx_set_magnifier` |
 | Export & loading status | 6 | `vx_export_region`, `vx_export_image`, `vx_export_svg`, `vx_svg_export_status`, `vx_loading_status`, `vx_cancel_loading` |
 | Bookmarks | 4 | `vx_add_bookmark`, `vx_list_bookmarks`, `vx_remove_bookmark`, `vx_goto_bookmark` |
-| Track display options | 4 | `vx_set_alignment_options`, `vx_set_signal_options`, `vx_set_variant_options`, `vx_set_interaction_options` |
+| Track display options | 9 | `vx_set_track_options`, `vx_set_coverage_options`, `vx_set_signal_options`, `vx_set_variant_options`, `vx_set_interaction_options`, `vx_set_sequence_options`, `vx_set_gene_options`, `vx_set_feature_options`, `vx_set_alignment_options` |
 | Read aggregates and transcript DTI | 6 | `vx_add_aggregate_track`, `vx_set_aggregate_options`, `vx_aggregate_rows`, `vx_add_dti_track`, `vx_set_dti_options`, `vx_dti_lookup` |
+| Sashimi and overlay tracks | 4 | `vx_add_sashimi_track`, `vx_set_sashimi_options`, `vx_add_overlay_track`, `vx_set_overlay_options` |
 | Analysis | 5 | `vx_list_analyses`, `vx_run_analysis`, `vx_analysis_status`, `vx_cancel_analysis`, `vx_read_result_rows` |
 | Video recording | 3 | `vx_start_recording`, `vx_stop_recording`, `vx_recording_status` |
+| Circular view and dot plot | 3 | `vx_open_circular_view`, `vx_export_circular_view`, `vx_dot_plot` |
 | Sessions | 3 | `vx_save_session`, `vx_load_session`, `vx_shutdown` |
+| Edit mode | 4 | `vx_edit_feature`, `vx_edit_bases`, `vx_edit_history`, `vx_edit_write` |
+| Known Features | 5 | `vx_known_features`, `vx_known_features_status`, `vx_close_known_features`, `vx_export_known_features`, `vx_set_known_features_options` |
+
+22 of the tools are new in 0.11.0: `vx_set_reference_mode`, the
+track option tools other than those of the signal, variant,
+interaction and alignment tracks, the Sashimi and overlay tools,
+the circular view and dot plot tools, the Edit mode tools and the
+Known Features tools.
 
 ---
 
@@ -101,15 +119,16 @@ its reference; the HTTP shapes behind them are in
 The MCP server talks to VX's API only (`127.0.0.1:9876`, or the
 address `VX_API_BASE` gives). It makes no other network call of
 its own. For the network use of VX itself (opt-in usage
-statistics, and the downloads you ask for), see the main
-[README](../README.md) and the *Privacy & Usage Statistics*
-section of VX's built-in manual (Settings > Help).
+statistics, the downloads you ask for, the Known Features pane's
+look-ups), see the main [README](../README.md) and the *Privacy &
+Usage Statistics* section of VX's built-in manual (Settings >
+Help).
 
 ---
 
 ## Versioning
 
-The server's tools follow the VX release it ships with: this
-folder is VX 0.10.0's (58 tools, over version 2 of the HTTP API).
+The server's tools follow the VX release it comes with: this
+folder is VX 0.11.0's (80 tools, over version 2 of the HTTP API).
 If you upgrade VX, redeploy this folder's contents to keep them in
 sync.

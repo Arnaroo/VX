@@ -69,8 +69,9 @@ output bedGraph next to the FASTA."
    analysis runs on the view)
 3. Poll: `vx_analysis_status()` every 1 to 2 s. Watch for
    `complete=true`, then read `success`, `output_path` and `summary`.
-4. The result is also added as a new track (Settings > Analysis
-   decides; on by default): `vx_get_state()` names it, and
+4. The result is also added as a new track, right below its input
+   track (Settings > Analysis decides; on by default):
+   `vx_get_state()` names it, and
    `vx_screenshot_track(track_name=<that name>)` captures it.
    `vx_read_result_rows(path=<output_path>)` gives the file's rows a
    page at a time.
@@ -104,9 +105,12 @@ Confirm subsampling did/didn't kick in."
 Use case: "Visit each of my saved bookmarks in turn and screenshot
 the viewport at each one."
 
-1. `vx_list_bookmarks()` → array of `{index, label, region}` entries.
+1. `vx_list_bookmarks()` → array of `{index, label, region, group}`
+   entries (since 0.11.0 each bookmark belongs to a reference group;
+   an empty `group` is every group's).
 2. For each `i` in the returned indices:
-   - `vx_goto_bookmark(index=i)`
+   - `vx_goto_bookmark(index=i)` (a bookmark of another group
+     switches to that group first; the answer's `switched` says so)
    - `vx_screenshot(target="viewport", scale=2.0)` → save the image
      under `<label>.png`.
 
